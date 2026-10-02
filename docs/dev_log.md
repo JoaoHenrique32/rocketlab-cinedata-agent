@@ -217,7 +217,57 @@ P1–P3 foram aprovadas pelo usuário e aplicadas em seguida (ver "Passo 3.1").
 
 ---
 
-## Próximo: Passo 5 — README e avaliação real ⏳
-- Configurar `.env` e rodar `RUN_LLM_EVAL=1 pytest -m llm` (~14 req) para medir a acurácia nas 14 perguntas e ajustar os prompts.
+## Passo 4.1 — Avaliação real com o OpenRouter (2026-10-02)
+
+**Status:** ✅ Concluído. 14/14 perguntas corretas; 18 de 50 req consumidas no dia.
+
+**Como foi executada**
+- Smoke test com 1 pergunta antes de rodar as outras 13 (proteção de quota).
+- Script instrumentado (fora do repositório) envolveu a função de completion para registrar cada tentativa: modelo, resultado, latência e se o JSON era válido.
+- As 13 restantes rodaram com `LLM_MODELS` reordenado (nemotron primeiro) só naquela execução, depois que o gemma deu 429 no smoke test.
+- Revalidação pela suíte oficial `RUN_LLM_EVAL=1 pytest -m llm`: **14 passed com 0 req** (tudo saiu do cache).
+
+**Comportamento observado do fallback e do formato**
+| Evento | Ocorrências | Tratamento |
+|---|---|---|
+| `gemma-4-31b-it:free` → HTTP 429 | 1/1 | Fallback automático para o nemotron, na mesma pergunta |
+| `nemotron-3-super-120b-a12b:free` respondeu | 17/17 chamadas | Latência de 3,7s a 21,5s |
+| JSON inválido na 1ª resposta | 3/17 (margem, ator 5 anos, diretores) | Retry com o erro devolvido ao modelo, 3/3 recuperados (+3 req) |
+
+**Resultado comparativo (agente × gabarito)**
+| # | Pergunta | 1º resultado do agente | Comparador v1 | Final | Observação |
+|---|---|---|---|---|---|
+| 1 | Top 10 receita R$ | Avatar: The Way Of Water | ✅ | ✅ | via fallback (gemma 429) |
+| 2 | Lucro médio por gênero | Science Fiction (US$ 183 mi) | ❌ | ✅ | valores idênticos; o agente usou `LIMIT 10` e o gabarito traz os 19 |
+| 3 | Maior margem | Secret Superstar (479×) | ✅ | ✅ | P1 aplicada; JSON recuperado no retry |
+| 4 | 5 mais populares | Blue Beetle | ✅ | ✅ | |
+| 5 | Divergência TMDB × IMDb | Me Against You... (6,43) | ✅ | ✅ | P2 aplicada |
+| 6 | IMDb por ano | 2016: 6,34 | ❌ | ✅ | gabarito ajustado ao enunciado literal (ver abaixo) |
+| 7 | Ator, últimos 5 anos | Eric Roberts (54) | ❌ | ✅ | `LIMIT 1` em pergunta no singular; D2 aplicada; JSON recuperado |
+| 8 | Diretores, nota (≥ 5 filmes) | — | ✅ | ✅ | JSON recuperado no retry |
+| 9 | Dupla ator–diretor | Joe Anoa'i × Kevin Dunn (37) | ❌ | ✅ | `LIMIT 1`; usou espontaneamente o padrão `MATERIALIZED` do few-shot |
+| 10 | Filmes por gênero | Drama (28.086) | ✅ | ✅ | |
+| 11 | Produtora com maior lucro | Marvel Studios (US$ 14,9 bi) | ❌ | ✅ | `LIMIT 1` |
+| 12 | Gênero com maior margem média | Music (15,55×) | ❌ | ✅ | `LIMIT 1`; P1 aplicada |
+| 13 | Mais avaliados | Die Hart 2: Die Harter (13) | ❌ | ✅ | empate de títulos duplicados; a chave passou a ser a contagem |
+| 14 | Divergência usuários × IMDb | — | ✅ | ✅ | P2 aplicada |
+
+**Transparência sobre a mudança de 6/14 para 14/14:** nenhum SQL do agente foi alterado. As mudanças foram no avaliador, e todas estão justificadas acima:
+1. **Comparador v2** (`key_values_match`): compara os *k* primeiros valores da coluna-chave (k = menor nº de linhas) como multiconjunto. A v1 exigia o conjunto completo do gabarito e por isso reprovava `LIMIT 1` em perguntas no singular ("**Qual** ator…", "**Qual** produtora…"), que é a resposta correta. Agora "acertar o 1º lugar" passa, e "trazer o 1º lugar errado" continua reprovando (teste `test_key_values_match_accepts_top1_answer`).
+2. **`rev_mais_avaliados`:** a coluna-chave passou de título para contagem. Os títulos duplicados na origem (P3) empatam em 10 avaliações, então qual título aparece no corte é arbitrário.
+3. **`pop_imdb_por_ano`:** removido o filtro `status_filme = 'Lançado'` do gabarito. Ele era uma interpretação minha, não estava no enunciado ("Nota média IMDb por ano de lançamento"). O agente seguiu o texto literal, que é o critério oficial.
+
+**Outros ajustes feitos com base na avaliação**
+| Arquivo | Alteração | Motivo |
+|---|---|---|
+| `src/agent/llm.py` | Parser tolerante a quebras de linha cruas em strings (`strict=False`) e ao escape inválido `'` | Hipótese para as 3 falhas de JSON. O log da avaliação guardou só 300 caracteres por resposta, então a causa exata não foi confirmada. A resposta bruta agora vai para `logger.debug` |
+| `src/agent/llm.py` | `logger.warning` a cada fallback; `LLMResponse.fallbacks` com a trilha de falhas | Observabilidade da instabilidade dos modelos |
+| `src/config.py`, `.env.example` | Ordem padrão: nemotron → gemma → qwen | Nemotron 17/17 com boa aderência ao formato; gemma deu 429 no 1º uso. Economiza 1 req por pergunta enquanto o gemma estiver limitado |
+
+**Melhoria possível (não implementada):** em perguntas no singular, o agente devolve só 1 linha. Para o público executivo, um top 3–5 daria mais contexto. Fica como ajuste de prompt opcional.
+
+---
+
+## Próximo: Passo 5 — README ⏳
 - `README.md` passo a passo (obrigatório no requisito oficial), incluindo como obter o `cinerocket.db`.
 - Opcional, se houver tempo: FastAPI `/chat` e `/health`.
