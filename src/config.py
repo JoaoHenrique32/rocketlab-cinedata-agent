@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     llm_models: list[str] = [
-        "google/gemma-4-31b-it:free",
         "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
         "qwen/qwen3.8-27b:free",
     ]
     llm_timeout_s: float = Field(default=60.0, gt=0)
