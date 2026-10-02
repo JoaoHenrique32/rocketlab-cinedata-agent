@@ -94,6 +94,6 @@ def to_markdown(response: AgentResponse) -> str:
         parts.append(f"## Dados\n{table}")
     if response.sql:
         parts.append(f"## SQL executado (auditoria)\n```sql\n{response.sql}\n```")
-    origin = "cache" if response.from_cache else (response.model or "—")
+    origin = "SQL do cache" if response.from_cache else (response.model or "—")
     parts.append(f"_Origem: {origin} · chamadas ao LLM: {response.llm_calls}_")
     return "\n\n".join(parts)
