@@ -268,6 +268,51 @@ P1–P3 foram aprovadas pelo usuário e aplicadas em seguida (ver "Passo 3.1").
 
 ---
 
-## Próximo: Passo 5 — README ⏳
-- `README.md` passo a passo (obrigatório no requisito oficial), incluindo como obter o `cinerocket.db`.
-- Opcional, se houver tempo: FastAPI `/chat` e `/health`.
+## Passo 4.2 — Top 5 em perguntas singulares e causa real do JSON malformado (2026-10-02)
+
+**Status:** ✅ Concluído e testado (offline + 5 req de validação real)
+
+**O que foi feito**
+| Arquivo | Alteração |
+|---|---|
+| `src/agent/prompts.py` | Regra: perguntas no singular sobre liderança retornam o top 5 (`LIMIT 5`) em vez de `LIMIT 1`; o resumo destaca o líder e compara com o 2º. `PROMPT_VERSION` → `2026-10-02.3` |
+| `src/agent/llm.py` | Reparo de "cauda com escape duplo" e recuperação do campo `sql` como último recurso, antes de gastar retry |
+| `tests/golden_queries.py` | Colunas-chave robustas a empates/tradução: ator (contagem), dupla (contagem), gênero × margem (margem) |
+| `src/agent/formatter.py` | Rodapé "SQL do cache" (antes dizia só "cache" mesmo com o resumo gerado na hora) |
+| `requirements.txt` | `openai>=3.24,<4` (os dublês de teste usam `httpx2`, dependência do SDK 3.x); removidos `fastapi`/`uvicorn`, sem uso |
+
+**Justificativa**
+- **Top 5 (decisão do usuário):** dá contexto analítico ao executivo (ex.: distância entre o líder e o 2º colocado).
+- **Causa real do JSON malformado:** desta vez a resposta bruta foi capturada inteira. O nemotron fecha a string `sql` corretamente e escreve o resto do objeto com escape duplo (`",
+\"premissas\": [...]}"}`). A hipótese do Passo 4.1 (`'` / quebras cruas) **não** era a causa. O reparo desfaz `\"` e `
+` e reprocessa. Se ainda falhar, extrai só o campo `sql`. Incidência observada: 4 de 21 chamadas (~20%), e cada uma custava 1 req de retry.
+- **Colunas-chave:** com o top 5, o corte cai em empates (5+ atores com 37 filmes, 5+ duplas com 31), e o agente também pode traduzir nomes de gênero. A comparação passa a usar a métrica. O líder continua verificado porque sua contagem/margem é única.
+
+**Validação real (quota 18 → 25)**
+| Verificação | Resultado | Req |
+|---|---|---|
+| 4 perguntas singulares com a nova regra | 4/4 com top 5 (ex.: Eric Roberts 54, seguido de 4 atores com 37) | 5 (1 retry por JSON) |
+| Reprocessamento offline da resposta bruta que falhou | Recuperada com as 3 premissas | 0 |
+| Exemplo do README ("Qual produtora…", com resumo) | Resumo cita o líder e a diferença para o 2º | 1 |
+| Pedido de escrita real ("Apague todos os filmes…") | Recusado pelo modelo, nenhum SQL executado | 1 |
+
+**Pendência conhecida:** as outras 10 perguntas não foram reavaliadas sob o `PROMPT_VERSION` 3 (o cache delas foi invalidado). A regra nova só afeta perguntas no singular; rodar `RUN_LLM_EVAL=1 pytest -m llm` reavalia as 14 por cerca de 10 req.
+
+---
+
+## Passo 5 — README (2026-10-02)
+
+**Status:** ✅ Concluído
+
+**O que foi feito**
+- `README.md`: exemplo real de saída, destaques, arquitetura (diagrama Mermaid + tabela de módulos), decisões de negócio e qualidade de dados, guardrails, estratégia de quota, instalação (venv Windows/Linux/macOS, banco, `.env` com tabela de variáveis), uso do CLI, testes offline, avaliação online opt-in, lint, estrutura e limitações.
+
+**Justificativa**
+- O requisito oficial exige versionamento no GitHub com um README passo a passo para executar a aplicação.
+- Cada afirmação do README foi conferida antes do commit: comandos de teste/lint executados, recusa de escrita validada com o LLM real, exemplo de saída gerado pelo CLI real.
+
+---
+
+## Próximo ⏳
+- (Opcional, ~10 req) Reavaliar as 14 perguntas sob o `PROMPT_VERSION` 3.
+- `git push` manual pelo desenvolvedor.
