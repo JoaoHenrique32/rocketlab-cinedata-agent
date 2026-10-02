@@ -7,4 +7,5 @@ pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "real_db: testes que exigem data/cinerocket.db (pulados se ausente)",
+    "llm: avaliação que chama o OpenRouter (opt-in via RUN_LLM_EVAL=1)",
 ]
