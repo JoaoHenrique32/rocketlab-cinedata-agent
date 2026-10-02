@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _FATAL_ERRORS = (openai.AuthenticationError, openai.PermissionDeniedError)
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _LENIENT_DECODER = json.JSONDecoder(strict=False)
+_SQL_FIELD_RE = re.compile(r'"sql"\s*:\s*"((?:[^"\\]|\\.)*)"', re.DOTALL)
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
@@ -171,18 +172,47 @@ def parse_json_object(text: str) -> dict[str, Any]:
     if start == -1:
         raise LLMResponseError("O modelo não retornou JSON.")
     candidate = cleaned[start:]
-    # 2ª tentativa corrige os desvios mais comuns de modelos gratuitos:
-    # `\'` (escape inválido em JSON); `strict=False` aceita quebras de linha cruas.
     last_error: json.JSONDecodeError | None = None
-    for attempt in (candidate, candidate.replace(r"\'", "'")):
+    for attempt in _repair_candidates(candidate):
         try:
             parsed, _ = _LENIENT_DECODER.raw_decode(attempt)
             break
         except json.JSONDecodeError as exc:
             last_error = exc
     else:
-        logger.debug("Resposta não-JSON do modelo: %r", text)
-        raise LLMResponseError(f"JSON inválido na resposta: {last_error}")
+        salvaged = _salvage_sql_field(candidate)
+        if salvaged is None:
+            logger.debug("Resposta não-JSON do modelo: %r", text)
+            raise LLMResponseError(f"JSON inválido na resposta: {last_error}")
+        logger.warning("JSON malformado; campo 'sql' recuperado sem as premissas.")
+        return salvaged
     if not isinstance(parsed, dict):
         raise LLMResponseError("A resposta JSON não é um objeto.")
     return parsed
+
+
+def _repair_candidates(candidate: str) -> tuple[str, ...]:
+    """Variações para os desvios de formato observados em modelos `:free`.
+
+    1. Original (`strict=False` já aceita quebras de linha cruas em strings).
+    2. `\\'` -> `'` (escape inválido em JSON).
+    3. Escape duplo: o modelo fecha a string `sql` e escreve o resto do objeto
+       como se ainda estivesse dentro de uma string (`,\\n\\"premissas\\": ...`).
+       Desfazer `\\"` e `\\n` recupera a estrutura (as quebras viram literais,
+       aceitas pelo decoder leniente).
+    """
+    unquoted = candidate.replace(r"\'", "'")
+    unescaped = unquoted.replace(r"\"", '"').replace(r"\n", "\n")
+    return (candidate, unquoted, unescaped)
+
+
+def _salvage_sql_field(candidate: str) -> dict[str, Any] | None:
+    """Último recurso: extrai só o campo `sql` (evita gastar 1 req de retry)."""
+    match = _SQL_FIELD_RE.search(candidate)
+    if match is None:
+        return None
+    try:
+        sql = json.loads(f'"{match.group(1)}"', strict=False)
+    except json.JSONDecodeError:
+        return None
+    return {"sql": sql, "premissas": []} if sql.strip() else None

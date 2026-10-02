@@ -118,5 +118,26 @@ def test_parse_json_object_rejects_invalid(text: str) -> None:
         parse_json_object(text)
 
 
+# Formato real observado no nemotron (avaliação de 2026-10-02): após fechar a
+# string "sql", o restante do objeto vem com escape duplo.
+DOUBLE_ESCAPED = (
+    r'{"sql": "SELECT a\nFROM t\nWHERE x = '
+    "'Lançado'"
+    r'",\n\"premissas\": '
+    r'[\n  \"Premissa A.\",\n  \"Premissa B.\"\n]}"}'
+)
+
+
+def test_parse_json_object_repairs_double_escaped_tail() -> None:
+    parsed = parse_json_object(DOUBLE_ESCAPED)
+    assert parsed["sql"] == "SELECT a\nFROM t\nWHERE x = 'Lançado'"
+    assert parsed["premissas"] == ["Premissa A.", "Premissa B."]
+
+
+def test_parse_json_object_salvages_sql_field_as_last_resort() -> None:
+    text = r'{"sql": "SELECT \"x\"\nFROM t", "premissas": [quebrado'
+    assert parse_json_object(text) == {"sql": 'SELECT "x"\nFROM t', "premissas": []}
+
+
 def test_strip_reasoning() -> None:
     assert strip_reasoning("<think>x</think>  Resumo.") == "Resumo."
