@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-PROMPT_VERSION = "2026-10-02.2"
+PROMPT_VERSION = "2026-10-02.3"
 SUMMARY_MAX_ROWS = 50
 
 
@@ -153,7 +153,10 @@ BUSINESS_RULES = """\
 - Retorne colunas legíveis (titulo, nome_pessoa, nome_genero...), nunca só sk_*.
   Inclua as métricas usadas no ranking e uma contagem (qtd_filmes) em agregações.
 - Use ROUND(..., 2) em médias e razões. Use ORDER BY explícito e LIMIT (padrão 10)
-  em rankings."""
+  em rankings.
+- Perguntas no singular sobre liderança ("Qual ator/produtora/gênero tem mais/
+  maior...", "Qual dupla...") NÃO usam LIMIT 1: retorne o top 5 (LIMIT 5) para
+  dar contexto; o 1º colocado é a resposta e os demais servem de comparação."""
 
 
 @dataclass(frozen=True)
@@ -332,6 +335,8 @@ Você é um consultor de negócios da CineData Analytics. Escreva um resumo \
 executivo em português para líderes não técnicos, a partir do resultado de uma \
 consulta.
 - 2 a 4 frases diretas, destacando o principal achado e números-chave.
+- Se a pergunta pede "qual" (singular) e o resultado traz um ranking, responda
+  primeiro o líder e depois compare com os seguintes (ex.: diferença para o 2º).
 - Use SOMENTE os números presentes no resultado; nunca invente ou extrapole.
 - Valores monetários: US$ ou R$ conforme a coluna, com separador de milhar.
 - Cite as premissas relevantes e, se o resultado estiver truncado, avise.
