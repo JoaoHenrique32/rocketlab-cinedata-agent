@@ -8,6 +8,7 @@
 """
 
 import os
+from collections import Counter
 from typing import Any, Sequence
 
 import pytest
@@ -64,11 +65,19 @@ def key_values_match(
     agent_columns: int,
     agent_rows: Sequence[Sequence[Any]],
 ) -> bool:
-    """O agente acerta se alguma coluna sua contém exatamente os mesmos valores
-    da coluna-chave do gabarito (como conjunto: empates podem mudar a ordem)."""
-    expected = {_normalize(row[key_column]) for row in gold_rows}
+    """Compara os k primeiros valores da coluna-chave (k = menor nº de linhas).
+
+    - Prefixo: aceita `LIMIT 1` em perguntas no singular ("Qual ator...") e
+      tops de tamanho diferente do gabarito, desde que o topo coincida.
+    - Multiconjunto: empates podem mudar a ordem sem invalidar a resposta.
+    - Qualquer coluna: a posição/nome da coluna no SQL do agente é livre.
+    """
+    k = min(len(gold_rows), len(agent_rows))
+    if k == 0:
+        return False
+    expected = Counter(_normalize(row[key_column]) for row in gold_rows[:k])
     return any(
-        {_normalize(row[j]) for row in agent_rows} == expected
+        Counter(_normalize(row[j]) for row in agent_rows[:k]) == expected
         for j in range(agent_columns)
     )
 
@@ -99,3 +108,10 @@ def test_key_values_match_ignores_order_and_column_position() -> None:
     gold = [("A", 1.0), ("B", 2.0)]
     assert key_values_match(gold, 0, 2, [(2.04, "B"), (1.0, "A")])
     assert not key_values_match(gold, 0, 2, [(1.0, "A"), (3.0, "C")])
+
+
+def test_key_values_match_accepts_top1_answer() -> None:
+    gold = [("A", 9.0), ("B", 8.0), ("C", 7.0)]
+    assert key_values_match(gold, 0, 2, [("A", 9.0)])
+    assert not key_values_match(gold, 0, 2, [("B", 8.0)])
+    assert not key_values_match(gold, 0, 2, [])

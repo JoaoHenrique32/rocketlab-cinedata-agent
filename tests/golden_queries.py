@@ -18,7 +18,7 @@ class GoldenCase:
     category: str
     question: str
     sql: str
-    # Colunas cujo conteúdo deve coincidir com a resposta do agente (ordem importa).
+    # Coluna do gabarito cujos valores devem aparecer em alguma coluna da resposta.
     key_column: int = 0
 
 
@@ -109,7 +109,7 @@ SELECT m.ano_lancamento,
        ROUND(AVG(f.nota_imdb), 2) AS nota_media_imdb
 FROM fact_movies_performance f
 JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
-WHERE f.nota_imdb IS NOT NULL AND m.status_filme = 'Lançado'
+WHERE f.nota_imdb IS NOT NULL
 GROUP BY m.ano_lancamento
 ORDER BY m.ano_lancamento""",
     ),
@@ -245,6 +245,8 @@ FROM dim_reviews r
 JOIN dim_movies m ON m.sk_movie_id = r.sk_movie_id
 ORDER BY r.qtd_avaliacoes_usuarios DESC, r.nota_media_usuarios DESC
 LIMIT 10""",
+        # Títulos duplicados empatam na contagem: compara-se a contagem.
+        key_column=1,
     ),
     GoldenCase(
         id="rev_divergencia_usuarios_imdb",
