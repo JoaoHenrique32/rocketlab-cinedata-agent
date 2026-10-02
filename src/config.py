@@ -18,15 +18,38 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    openrouter_api_key: str = ""
+    # Banco
     db_path: Path = PROJECT_ROOT / "data" / "cinerocket.db"
     query_timeout_s: float = Field(default=30.0, gt=0)
     max_rows: int = Field(default=200, gt=0)
 
+    # LLM (OpenRouter). Ordem de `llm_models` = ordem de fallback.
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_models: list[str] = [
+        "google/gemma-4-31b-it:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "qwen/qwen3.8-27b:free",
+    ]
+    llm_timeout_s: float = Field(default=60.0, gt=0)
+    llm_temperature: float = Field(default=0.0, ge=0, le=2)
+
+    # Quota e cache
+    daily_request_limit: int = Field(default=50, gt=0)
+    quota_warning_at: int = Field(default=40, gt=0)
+    cache_path: Path = PROJECT_ROOT / ".cache" / "agent_cache.db"
+
     def resolved_db_path(self) -> Path:
         """Resolve `db_path` relativo à raiz do projeto quando não for absoluto."""
-        path = self.db_path
-        return path if path.is_absolute() else PROJECT_ROOT / path
+        return _resolve(self.db_path)
+
+    def resolved_cache_path(self) -> Path:
+        """Resolve `cache_path` relativo à raiz do projeto quando não for absoluto."""
+        return _resolve(self.cache_path)
+
+
+def _resolve(path: Path) -> Path:
+    return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 @lru_cache(maxsize=1)
