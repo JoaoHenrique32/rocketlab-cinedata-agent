@@ -216,3 +216,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- CineData Agent ----
+# Banco da camada Gold (581 MB, acima do limite de 100 MB do GitHub) — ver README
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+# Cache local de respostas do LLM / contador de quota
+.cache/
+# Instruções locais do assistente (não versionar)
+CLAUDE.md
+Claude.md
+# Material oficial da Visagio (copyright) — não publicar
+docs/requisitos.md
