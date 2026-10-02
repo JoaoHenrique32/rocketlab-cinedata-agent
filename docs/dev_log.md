@@ -179,5 +179,45 @@ P1–P3 foram aprovadas pelo usuário e aplicadas em seguida (ver "Passo 3.1").
 
 ---
 
-## Próximo: Passo 4 — Cliente LLM, cache e workflow ⏳
-`llm.py` (fallback entre modelos `:free` + contador de quota), `cache.py` (hash da pergunta + `PROMPT_VERSION`), `workflow.py` (orçamento de até 2 req/pergunta + 1 retry), `formatter.py`.
+## Passo 4 — Cliente LLM, cache, workflow e CLI (2026-10-02)
+
+**Status:** ✅ Concluído e testado offline (LLM fake). ⏳ Avaliação com o LLM real depende da `OPENROUTER_API_KEY` no `.env`.
+
+**O que foi feito**
+| Arquivo | Conteúdo |
+|---|---|
+| `src/config.py`, `.env.example` | Settings de LLM (`openrouter_base_url`, `llm_models` em ordem de fallback, `llm_timeout_s`, `llm_temperature=0`), quota (`daily_request_limit=50`, `quota_warning_at=40`) e `cache_path` |
+| `src/agent/cache.py` | `AgentCache`: tabela `responses` (chave sha256 de pergunta normalizada + `PROMPT_VERSION`; guarda SQL, premissas e resumo) e tabela `quota` (requisições por dia UTC) |
+| `src/agent/llm.py` | `LLMClient.complete()` com fallback ordenado; `openrouter_completion_fn()` (SDK `openai`, `max_retries=0`); `parse_json_object()` tolerante; `strip_reasoning()`; exceções `LLMError` / `QuotaExceededError` / `LLMResponseError` |
+| `src/agent/formatter.py` | `AgentResponse`; `to_markdown()` (pergunta → resumo → premissas → tabela → SQL auditado → origem e nº de chamadas); números em pt-BR; `local_summary()` |
+| `src/agent/workflow.py` | `CineDataAgent.ask(question, summarize, use_cache)` e `from_settings()` |
+| `src/cli.py` | `python -m src.cli "pergunta"`, modo interativo, `--no-summary`, `--no-cache`, `--quota`, `--clear-cache` |
+| `tests/fakes.py` | `ScriptedLLM` (roteiro de respostas/exceções), `MemoryQuota`, construtores de erros do SDK |
+| `tests/test_llm.py`, `test_cache.py`, `test_workflow.py`, `test_formatter.py` | 50 testes offline |
+| `tests/test_queries.py` | Avaliação opt-in (`RUN_LLM_EVAL=1`): o agente responde as 14 perguntas e o resultado é comparado ao do gabarito |
+
+**Justificativa**
+- **Modelos padrão:** os modelos citados no planejamento (`llama-3.3-70b-instruct:free`, `qwen-2.5-72b-instruct:free`) **não existem mais** no catálogo `:free` (consulta a `/api/v1/models` em 2026-10-02). A cadeia padrão passou a ser `gemma-4-31b-it` → `nemotron-3-super-120b-a12b` → `qwen3.8-27b`, configurável via `LLM_MODELS` sem mexer em código.
+- **Orçamento de chamadas por pergunta:**
+  | Cenário | Req |
+  |---|---|
+  | Cache hit com resumo | 0 (SQL reexecutado localmente) |
+  | Caminho feliz | 2 (SQL + resumo) |
+  | `--no-summary` | 1 |
+  | SQL inválido | +1 retry, com o erro do SQLite/guardrail devolvido ao modelo |
+- **Fallback:** 429, timeout, conexão, 5xx, 404 (modelo removido), 400 e resposta vazia passam para o próximo modelo. 401/402/403 abortam, porque os outros modelos falhariam igual e só gastariam quota. 429 com "per-day" (limite diário do OpenRouter) também aborta, com `QuotaExceededError`.
+- **Contagem conservadora de quota:** cada tentativa é registrada *antes* do envio, e o limite local é checado antes de cada tentativa, inclusive no meio do fallback.
+- **Sem `response_format`:** só parte dos modelos `:free` o suporta. O parser aceita cercas de markdown, `<think>` e texto ao redor do JSON.
+- **Cache só de sucesso:** SQL que falhou nunca é cacheado. No hit, o SQL é **reexecutado** (os dados estão sempre atualizados) e o resumo só é gerado se ainda não existir.
+- **Degradação graciosa:** se o resumo falhar (quota, timeout), a resposta sai com o resumo local por template. Os dados já obtidos não se perdem.
+- **Auditoria:** em caso de erro, o último SQL tentado também é exibido.
+- **Avaliação opt-in:** compara a coluna-chave do gabarito como conjunto, em qualquer coluna da resposta, tolerando ordem de empates e posição de coluna. Roda sem resumo (~14 req); reexecuções saem do cache (0 req).
+
+**Resultado:** 135 testes passando + 14 de avaliação LLM pulados por padrão; Black e Flake8 limpos. Smoke test do CLI: sem chave → mensagem de configuração e exit 1; `--quota` OK; render de ponta a ponta com LLM fake sobre o banco real OK.
+
+---
+
+## Próximo: Passo 5 — README e avaliação real ⏳
+- Configurar `.env` e rodar `RUN_LLM_EVAL=1 pytest -m llm` (~14 req) para medir a acurácia nas 14 perguntas e ajustar os prompts.
+- `README.md` passo a passo (obrigatório no requisito oficial), incluindo como obter o `cinerocket.db`.
+- Opcional, se houver tempo: FastAPI `/chat` e `/health`.
