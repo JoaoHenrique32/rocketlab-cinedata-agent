@@ -2,9 +2,5 @@
 sqlglot>=26,<27
 pydantic-settings>=2.4
 python-dotenv>=1.0
-openai>=1.40
+openai>=3.24,<4
 rich>=13.7
-
-# API (opcional)
-fastapi>=0.115
-uvicorn>=0.30
