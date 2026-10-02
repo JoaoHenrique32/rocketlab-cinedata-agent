@@ -1,8 +1,9 @@
 """Perguntas oficiais do case CineData Analytics com SQL gabarito.
 
 Os gabaritos aplicam as regras de negócio do projeto (ver docs/dev_log.md):
-lucro/margem exigem `receita > 0 AND orcamento > 0`; "últimos N anos" é relativo
-ao ano mais recente com filmes lançados no banco.
+lucro/margem exigem `receita > 0 AND orcamento > 0` (D1), margem exige ainda
+`orcamento_usd >= 10000` (P1), divergências de nota exigem amostra mínima (P2) e
+"últimos N anos" é relativo ao ano mais recente com filmes lançados (D2).
 
 Estes casos NÃO são usados como few-shot em `src.agent.prompts`, para que a
 suíte meça generalização e não memorização.
@@ -66,7 +67,7 @@ SELECT m.titulo, f.orcamento_usd, f.receita_usd,
            AS margem_lucro
 FROM fact_movies_performance f
 JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
-WHERE f.receita_usd > 0 AND f.orcamento_usd > 0
+WHERE f.receita_usd > 0 AND f.orcamento_usd >= 10000
 ORDER BY margem_lucro DESC
 LIMIT 10""",
     ),
@@ -94,7 +95,7 @@ SELECT m.titulo, f.nota_tmdb, f.qtd_tmdb, f.nota_imdb, f.qtd_imdb,
        ROUND(ABS(f.nota_tmdb - f.nota_imdb), 2) AS divergencia
 FROM fact_movies_performance f
 JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
-WHERE f.qtd_tmdb > 0 AND f.nota_imdb IS NOT NULL
+WHERE f.qtd_tmdb >= 50 AND f.qtd_imdb >= 50 AND f.nota_imdb IS NOT NULL
 ORDER BY divergencia DESC
 LIMIT 10""",
     ),
@@ -229,7 +230,7 @@ SELECT g.nome_genero,
 FROM fact_movies_performance f
 JOIN bridge_movie_genre bg ON bg.sk_movie_id = f.sk_movie_id
 JOIN dim_genres g ON g.sk_genre_id = bg.sk_genre_id
-WHERE f.receita_usd > 0 AND f.orcamento_usd > 0
+WHERE f.receita_usd > 0 AND f.orcamento_usd >= 10000
 GROUP BY g.nome_genero
 ORDER BY margem_media DESC""",
     ),
@@ -257,7 +258,9 @@ SELECT m.titulo, r.qtd_avaliacoes_usuarios, r.nota_media_usuarios, f.nota_imdb,
 FROM dim_reviews r
 JOIN dim_movies m ON m.sk_movie_id = r.sk_movie_id
 JOIN fact_movies_performance f ON f.sk_movie_id = r.sk_movie_id
-WHERE r.nota_media_usuarios IS NOT NULL AND f.nota_imdb IS NOT NULL
+WHERE r.qtd_avaliacoes_usuarios >= 3
+  AND r.nota_media_usuarios IS NOT NULL
+  AND f.qtd_imdb >= 50 AND f.nota_imdb IS NOT NULL
 ORDER BY divergencia DESC
 LIMIT 10""",
     ),

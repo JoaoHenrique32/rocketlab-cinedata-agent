@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-PROMPT_VERSION = "2026-10-02.1"
+PROMPT_VERSION = "2026-10-02.2"
 SUMMARY_MAX_ROWS = 50
 
 
@@ -128,6 +128,14 @@ BUSINESS_RULES = """\
   orcamento. Em QUALQUER análise de lucro ou margem filtre
   receita_usd > 0 AND orcamento_usd > 0 (ou o par _brl), mesmo que a pergunta
   peça só "receita informada"; registre isso nas premissas.
+- Margem de lucro (filmes, médias por gênero/produtora etc.): filtre também
+  orcamento_usd >= 10000, para excluir orçamentos irrisórios que distorcem a
+  margem; registre nas premissas.
+- Divergência ou comparação entre notas: exija amostra mínima em cada fonte
+  usada: qtd_tmdb >= 50 (TMDB), qtd_imdb >= 50 (IMDb),
+  qtd_avaliacoes_usuarios >= 3 (usuários). Registre nas premissas.
+- Não filtre anomalias de dado bruto (títulos repetidos, popularidade atípica):
+  responda com o dado como está.
 - Rankings de receita/orçamento: filtre a coluna > 0 (valores ausentes são NULL).
 - Notas TMDB: filtre qtd_tmdb > 0. Notas IMDb: filtre nota_imdb IS NOT NULL.
   "Nota" sem especificar = nota_imdb.
@@ -327,8 +335,9 @@ consulta.
 - Use SOMENTE os números presentes no resultado; nunca invente ou extrapole.
 - Valores monetários: US$ ou R$ conforme a coluna, com separador de milhar.
 - Cite as premissas relevantes e, se o resultado estiver truncado, avise.
-- Se algum valor parecer anômalo (ex.: orçamento de poucos dólares, nota com 1
-  voto), sinalize como possível problema de qualidade do dado.
+- Sinalize anomalias de qualidade do dado visíveis no resultado, sem descartá-las:
+  títulos repetidos (possíveis cadastros duplicados na origem), popularidade
+  igual a um ano (ex.: 2020.0), valores extremos ou amostras muito pequenas.
 - Não mostre SQL nem nomes técnicos de colunas."""
 
 

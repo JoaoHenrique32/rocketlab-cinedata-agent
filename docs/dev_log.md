@@ -112,10 +112,8 @@ Legenda de status: ✅ Concluído e testado · 🟡 Concluído, sem teste automa
 
 Os gabaritos seguem **literalmente** o enunciado e as decisões D1–D3. Os achados acima geram as decisões pendentes P1–P3.
 
-### Decisões pendentes
-- ⏳ **P1** — Corte mínimo de orçamento em análises de margem (ex.: `orcamento_usd >= 10000`)?
-- ⏳ **P2** — Mínimo de votos em análises de divergência de notas (ex.: `qtd_tmdb >= 50`, `qtd_imdb >= 50`, `qtd_avaliacoes_usuarios >= 3`)?
-- ⏳ **P3** — Tratamento de títulos duplicados e popularidade anômala: manter o dado bruto e só sinalizar no resumo (comportamento atual do prompt de resumo) ou filtrar?
+### Decisões de qualidade de dados
+P1–P3 foram aprovadas pelo usuário e aplicadas em seguida (ver "Passo 3.1").
 
 ---
 
@@ -144,6 +142,40 @@ Os gabaritos seguem **literalmente** o enunciado e as decisões D1–D3. Os acha
 - **Tool calling (sugerido, não obrigatório):** o desenho atual usa saída JSON `{sql, premissas}`, que funciona em qualquer modelo `:free`, inclusive nos sem suporte a tools, e custa 1 chamada. Se a avaliação valorizar tool calling explicitamente, o Passo 4 pode expor `execute_sql` como tool sem mudar prompts nem guardrails.
 - **Local do banco:** o enunciado sugere o `.db` "na mesma pasta do código". O projeto usa `data/cinerocket.db`, configurável via `DB_PATH`, e isso precisa ser documentado no README.
 - **`docs/requisitos.md`** traz "Copyright © 2026 Visagio. Todos os direitos reservados". A recomendação é não versioná-lo em repositório público (decisão do desenvolvedor).
+
+---
+
+## Passo 3.1 — Regras de qualidade de dados P1–P3 e compliance (2026-10-02)
+
+**Status:** ✅ Concluído e testado
+
+**Decisões aprovadas pelo usuário**
+| # | Decisão |
+|---|---|
+| P1 | Margem de lucro exige também `orcamento_usd >= 10000` |
+| P2 | Divergência de notas exige `qtd_tmdb >= 50`, `qtd_imdb >= 50`, `qtd_avaliacoes_usuarios >= 3` (conforme as fontes envolvidas) |
+| P3 | Dado bruto não é filtrado; títulos duplicados e popularidade anômala são sinalizados no resumo executivo |
+| D4 | Saída JSON `{sql, premissas}` mantida em vez de tool calling: 1 chamada previsível por pergunta |
+| D5 | `docs/requisitos.md` (material com copyright da Visagio) fica fora do versionamento |
+| D6 | Commits locais executados pelo assistente (Conventional Commits, sem co-autoria); `git push` só manual |
+
+**O que foi feito**
+| Arquivo | Alteração |
+|---|---|
+| `src/agent/prompts.py` | `BUSINESS_RULES` com P1/P2/P3; prompt de resumo instrui a sinalizar duplicatas, popularidade = ano, extremos e amostras pequenas; `PROMPT_VERSION` → `2026-10-02.2` (invalida o cache) |
+| `tests/golden_queries.py` | Gabaritos `fin_maior_margem`, `gen_maior_margem_media`, `pop_divergencia_tmdb_imdb`, `rev_divergencia_usuarios_imdb` com os novos filtros |
+| `.gitignore` | Inclui `docs/requisitos.md` |
+| `Claude.md` (local) | Regras P1–P3 e nova política de Git |
+
+**Efeito nos resultados**
+| Pergunta | Antes | Depois |
+|---|---|---|
+| Maior margem | "Dad, I'm Sorry", 133.830× (orçamento de US$ 128) | "Secret Superstar", 479× |
+| Gênero com maior margem média | Family, 946× (puxado por outliers) | Music, 15,6× |
+| Divergência TMDB × IMDb | Filmes com 1 voto | Filmes com ≥ 50 votos em cada fonte |
+| Divergência usuários × IMDb | Filmes com 1 avaliação | ≥ 3 avaliações e ≥ 50 votos IMDb |
+
+**Commits:** os passos 1–3 foram commitados em 7 commits atômicos (`chore` → `feat(database)` → `feat(agent)` → `test` → `feat(agent)` → `test` → `docs`).
 
 ---
 
