@@ -14,6 +14,7 @@ conservadora: uma requisição que falha no meio do caminho também conta).
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol, Sequence
@@ -23,8 +24,11 @@ import openai
 Messages = list[dict[str, str]]
 CompletionFn = Callable[[str, Messages], str]
 
+logger = logging.getLogger(__name__)
+
 _FATAL_ERRORS = (openai.AuthenticationError, openai.PermissionDeniedError)
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_LENIENT_DECODER = json.JSONDecoder(strict=False)
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
@@ -51,6 +55,8 @@ class LLMResponse:
     content: str
     model: str
     attempts: int
+    # Falhas dos modelos anteriores, quando houve fallback ("modelo: motivo").
+    fallbacks: tuple[str, ...] = ()
 
 
 def openrouter_completion_fn(
@@ -118,19 +124,28 @@ class LLMClient:
                         "Limite diário do OpenRouter atingido para modelos :free."
                     ) from exc
                 failures.append(f"{model}: rate limit (429)")
+                logger.warning("Fallback de modelo: %s", failures[-1])
                 continue
             except openai.APIStatusError as exc:
                 if exc.status_code == 402:
                     raise LLMError("Conta OpenRouter sem crédito (HTTP 402).") from exc
                 failures.append(f"{model}: HTTP {exc.status_code}")
+                logger.warning("Fallback de modelo: %s", failures[-1])
                 continue
             except (openai.APITimeoutError, openai.APIConnectionError) as exc:
                 failures.append(f"{model}: {type(exc).__name__}")
+                logger.warning("Fallback de modelo: %s", failures[-1])
                 continue
 
             if content.strip():
-                return LLMResponse(content=content, model=model, attempts=attempt)
+                return LLMResponse(
+                    content=content,
+                    model=model,
+                    attempts=attempt,
+                    fallbacks=tuple(failures),
+                )
             failures.append(f"{model}: resposta vazia")
+            logger.warning("Fallback de modelo: %s", failures[-1])
 
         raise LLMError(
             "Nenhum modelo disponível no momento (" + "; ".join(failures) + ")."
@@ -152,16 +167,22 @@ def parse_json_object(text: str) -> dict[str, Any]:
     fence = _FENCE_RE.search(cleaned)
     if fence:
         cleaned = fence.group(1).strip()
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError:
-        start = cleaned.find("{")
-        if start == -1:
-            raise LLMResponseError("O modelo não retornou JSON.") from None
+    start = cleaned.find("{")
+    if start == -1:
+        raise LLMResponseError("O modelo não retornou JSON.")
+    candidate = cleaned[start:]
+    # 2ª tentativa corrige os desvios mais comuns de modelos gratuitos:
+    # `\'` (escape inválido em JSON); `strict=False` aceita quebras de linha cruas.
+    last_error: json.JSONDecodeError | None = None
+    for attempt in (candidate, candidate.replace(r"\'", "'")):
         try:
-            parsed, _ = json.JSONDecoder().raw_decode(cleaned[start:])
+            parsed, _ = _LENIENT_DECODER.raw_decode(attempt)
+            break
         except json.JSONDecodeError as exc:
-            raise LLMResponseError(f"JSON inválido na resposta: {exc}") from exc
+            last_error = exc
+    else:
+        logger.debug("Resposta não-JSON do modelo: %r", text)
+        raise LLMResponseError(f"JSON inválido na resposta: {last_error}")
     if not isinstance(parsed, dict):
         raise LLMResponseError("A resposta JSON não é um objeto.")
     return parsed

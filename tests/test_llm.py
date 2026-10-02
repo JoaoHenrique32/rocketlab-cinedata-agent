@@ -103,8 +103,10 @@ def test_local_quota_stops_fallback_midway() -> None:
         '```json\n{"sql": "SELECT 1", "premissas": []}\n```',
         '<think>raciocínio {não json}</think>{"sql": "SELECT 1", "premissas": []}',
         'Claro! Segue: {"sql": "SELECT 1", "premissas": []} Espero ter ajudado.',
+        '{"sql": "SELECT 1", "premissas": ["linha 1\nlinha 2"]}',
+        r'{"sql": "SELECT 1", "premissas": ["status = \'Lançado\'"]}',
     ],
-    ids=["puro", "cerca", "think", "texto-ao-redor"],
+    ids=["puro", "cerca", "think", "texto-ao-redor", "newline-cru", "escape-aspas"],
 )
 def test_parse_json_object_tolerates_noise(text: str) -> None:
     assert parse_json_object(text)["sql"] == "SELECT 1"
