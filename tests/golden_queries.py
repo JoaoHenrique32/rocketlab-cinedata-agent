@@ -138,6 +138,8 @@ WHERE p.tipo_pessoa = 'Ator'
 GROUP BY p.sk_person_id, p.nome_pessoa
 ORDER BY qtd_filmes DESC
 LIMIT 10""",
+        # Vários atores empatam com 37 filmes logo após o líder: compara a contagem.
+        key_column=1,
     ),
     GoldenCase(
         id="cast_diretores_maior_nota",
@@ -189,6 +191,8 @@ FROM duplas du
 JOIN dim_people pa ON pa.sk_person_id = du.ator_id
 JOIN dim_people pd ON pd.sk_person_id = du.diretor_id
 ORDER BY du.qtd_filmes DESC""",
+        # Várias duplas empatam com 31 filmes: compara a contagem.
+        key_column=2,
     ),
     # 4. Gêneros e Produtoras
     GoldenCase(
@@ -233,6 +237,8 @@ JOIN dim_genres g ON g.sk_genre_id = bg.sk_genre_id
 WHERE f.receita_usd > 0 AND f.orcamento_usd >= 10000
 GROUP BY g.nome_genero
 ORDER BY margem_media DESC""",
+        # O agente pode traduzir o nome do gênero (Music -> Música): compara a margem.
+        key_column=2,
     ),
     # 5. Avaliações dos Usuários
     GoldenCase(
