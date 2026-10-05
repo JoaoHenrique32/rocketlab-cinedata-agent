@@ -313,6 +313,33 @@ P1–P3 foram aprovadas pelo usuário e aplicadas em seguida (ver "Passo 3.1").
 
 ---
 
+## Passo 5.1 — Reavaliação completa e ajuste das regras de nota (2026-10-05)
+
+**Status:** ✅ Concluído e testado (14/14 com o LLM real)
+
+**O que foi feito**
+- Reavaliação das 14 perguntas sob o `PROMPT_VERSION` `2026-10-02.3`: **13/14**. Falhou `cast_diretores_maior_nota`: o modelo aplicou `qtd_imdb >= 50` (regra P2, que vale só para divergência entre fontes) e usou `LIMIT 5` numa pergunta no plural. Scott Wozniak (líder do gabarito, 9,34) e Trevor L. Allen ficaram de fora.
+- Decisão do usuário (opção A): corrigir o prompt, não o gabarito.
+
+| Arquivo | Mudança |
+|---|---|
+| `src/agent/prompts.py` | Regra P2 explicita que o mínimo de votos vale **só** para comparação entre fontes; médias/rankings simples não filtram `qtd_tmdb`/`qtd_imdb >= 50`, salvo se a pergunta pedir um mínimo. Notas: `qtd_tmdb > 0` / `nota_imdb IS NOT NULL` são os únicos filtros em médias simples. Perguntas no plural usam `LIMIT 10`, salvo outra quantidade pedida. `PROMPT_VERSION` → `2026-10-05.1` (invalida o cache) |
+| `README.md` | Último resultado com data e versão do prompt |
+
+**Justificativa**
+- O filtro extra muda a resposta de negócio (exclui o 1º colocado) sem o usuário ter pedido. A P2 existe para divergências, onde 1 voto distorce a diferença entre fontes.
+- A exceção "salvo se a pergunta pedir um mínimo de votos" mantém coerência com o few-shot de ação (`qtd_tmdb >= 100` pedido na pergunta).
+
+**Validação**
+| Verificação | Resultado | Req |
+|---|---|---|
+| Suíte offline + Black + Flake8 | 140 passed, 14 skipped; lint limpo | 0 |
+| `RUN_LLM_EVAL=1 pytest -m llm` (v3) | 13/14 | 10 |
+| `RUN_LLM_EVAL=1 pytest -m llm` (`2026-10-05.1`) | **14/14**; diretores: sem filtro de votos, `LIMIT 10`, Scott Wozniak em 1º; divergências mantêm `>= 50` | 14 |
+
+Quota em 2026-10-05: 24/50. As 14 respostas estão em cache sob a versão nova.
+
+---
+
 ## Próximo ⏳
-- (Opcional, ~10 req) Reavaliar as 14 perguntas sob o `PROMPT_VERSION` 3.
 - `git push` manual pelo desenvolvedor.

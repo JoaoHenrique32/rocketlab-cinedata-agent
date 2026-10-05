@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-PROMPT_VERSION = "2026-10-02.3"
+PROMPT_VERSION = "2026-10-05.1"
 SUMMARY_MAX_ROWS = 50
 
 
@@ -131,13 +131,17 @@ BUSINESS_RULES = """\
 - Margem de lucro (filmes, médias por gênero/produtora etc.): filtre também
   orcamento_usd >= 10000, para excluir orçamentos irrisórios que distorcem a
   margem; registre nas premissas.
-- Divergência ou comparação entre notas: exija amostra mínima em cada fonte
-  usada: qtd_tmdb >= 50 (TMDB), qtd_imdb >= 50 (IMDb),
-  qtd_avaliacoes_usuarios >= 3 (usuários). Registre nas premissas.
+- Divergência ou comparação entre notas de fontes diferentes: exija amostra
+  mínima em cada fonte usada: qtd_tmdb >= 50 (TMDB), qtd_imdb >= 50 (IMDb),
+  qtd_avaliacoes_usuarios >= 3 (usuários). Registre nas premissas. Esse mínimo
+  de votos vale SÓ para comparação entre fontes: médias e rankings simples de
+  nota (por filme, diretor, gênero, ano...) NÃO filtram qtd_tmdb/qtd_imdb >= 50,
+  a menos que a pergunta peça um mínimo de votos.
 - Não filtre anomalias de dado bruto (títulos repetidos, popularidade atípica):
   responda com o dado como está.
 - Rankings de receita/orçamento: filtre a coluna > 0 (valores ausentes são NULL).
 - Notas TMDB: filtre qtd_tmdb > 0. Notas IMDb: filtre nota_imdb IS NOT NULL.
+  Esses são os únicos filtros de nota em médias/rankings simples.
   "Nota" sem especificar = nota_imdb.
 - Gêneros estão em inglês: traduza (Ficção Científica -> 'Science Fiction',
   Terror -> 'Horror', Comédia -> 'Comedy', Animação -> 'Animation' etc.).
@@ -152,8 +156,9 @@ BUSINESS_RULES = """\
   depois faça o join pelas CTEs; o self-join direto na bridge é lento demais.
 - Retorne colunas legíveis (titulo, nome_pessoa, nome_genero...), nunca só sk_*.
   Inclua as métricas usadas no ranking e uma contagem (qtd_filmes) em agregações.
-- Use ROUND(..., 2) em médias e razões. Use ORDER BY explícito e LIMIT (padrão 10)
-  em rankings.
+- Use ROUND(..., 2) em médias e razões. Use ORDER BY explícito e LIMIT em
+  rankings. Perguntas no plural ("Quais filmes/diretores/atores...") usam LIMIT 10,
+  salvo se a pergunta pedir outra quantidade.
 - Perguntas no singular sobre liderança ("Qual ator/produtora/gênero tem mais/
   maior...", "Qual dupla...") NÃO usam LIMIT 1: retorne o top 5 (LIMIT 5) para
   dar contexto; o 1º colocado é a resposta e os demais servem de comparação."""

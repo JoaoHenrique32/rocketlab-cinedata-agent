@@ -289,7 +289,7 @@ $env:RUN_LLM_EVAL="1"; pytest -m llm
 
 - **Custo:** cerca de 14 req na primeira execução (sem resumo, mais eventuais retries/fallbacks). As execuções seguintes saem do cache (**0 req**) até o prompt mudar.
 - **Critério:** os *k* primeiros valores da coluna-chave do gabarito precisam aparecer em alguma coluna da resposta (k = menor número de linhas), comparados como multiconjunto. Isso aceita top 5 contra top 10 e empates em ordem diferente, mas reprova líder errado.
-- **Último resultado:** **14/14**. Detalhes por pergunta, comportamento do fallback e incidência de JSON malformado estão em [`docs/dev_log.md`](docs/dev_log.md).
+- **Último resultado:** **14/14** (2026-10-05, `PROMPT_VERSION` `2026-10-05.1`). Detalhes por pergunta, comportamento do fallback e incidência de JSON malformado estão em [`docs/dev_log.md`](docs/dev_log.md).
 
 ### Qualidade de código
 
