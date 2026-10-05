@@ -341,5 +341,682 @@ Quota em 2026-10-05: 24/50. As 14 respostas estão em cache sob a versão nova.
 
 ---
 
+## Passo 5.2 — Registro detalhado da avaliação das 14 perguntas (2026-10-05)
+
+**Status:** ✅ Concluído (14/14 no teste automatizado; 2 perguntas com ressalva de completude documentada)
+
+**O que foi feito**
+- Cada pergunta oficial foi respondida pelo agente com resumo executivo gerado pelo LLM (`summarize=True`). O SQL saiu do cache da avaliação 14/14 (`PROMPT_VERSION` `2026-10-05.1`) e foi reexecutado no banco. Foi gasta 1 req por resumo (14 no total; quota do dia 26 → 40/50).
+- Para cada pergunta ficam registrados: o tipo/padrão do SQL, o resumo executivo integral, as premissas, a tabela completa retornada, o SQL integral executado e o status da validação.
+- Os textos dos resumos estão **literais**, como o agente respondeu, incluindo imperfeições de formatação numérica do LLM (ver "Ressalvas").
+
+**Justificativa**
+- Dá ao avaliador evidência auditável da resposta de ponta a ponta (pergunta → SQL → dados → resumo), e não só do resultado do teste automatizado.
+- O tipo de SQL mostra a variedade técnica coberta: joins via bridge, CTEs, CTE materializada, agregações com `HAVING`, métricas derivadas e referência temporal dinâmica.
+
+**Ambiente:** modelo `nvidia/nemotron-3-super-120b-a12b:free` (1º da cadeia; nenhum fallback acionado). Os números das tabelas usam o formatador do agente (padrão pt-BR).
+
+### 1. Quais são os 10 filmes com maior receita em R$?
+- **Categoria:** Bilheteria e Finanças · **ID:** `fin_top10_receita_brl`
+- **Tipo/Padrão de SQL:** Join fato × dimensão + ranking Top-N (`ORDER BY` / `LIMIT 10`)
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O filme com maior receita em R$ é **Avatar: The Way Of Water**, que arrecadou **R$ 12.390.136.500,54**. Em segundo lugar vem **Avengers: Endgame**, com **R$ 11.094.720.000,00**, ficando aproximadamente **R$ 1.295.416.500,54** atrás do líder. A lista completa inclui ainda Spider‑Man: No Way Home (R$ 10.977.782.882,74), Avengers: Infinity War (R$ 7.190.430.847,63), Top Gun: Maverick (R$ 7.160.804.869,01), Barbie (R$ 6.856.159.007,38), The Super Mario Bros. Movie (R$ 6.838.413.799,10), The Lion King (R$ 6.227.552.146,58), Frozen II (R$ 6.094.028.191,32) e Jurassic World: Fallen Kingdom (R$ 4.934.822.930,85), todas com receitas superiores a R$ 4,9 bilhões. Não foram identificadas anomalias de qualidade nos dados apresentados.
+
+**Premissas**
+- Receita em R$ considerada a coluna receita_brl.
+- Apenas filmes com receita informada (receita_brl > 0) são incluídos.
+
+**Dados retornados**
+
+| titulo | ano_lancamento | receita_brl |
+| --- | --- | --- |
+| Avatar: The Way Of Water | 2022 | 12.390.136.500,54 |
+| Avengers: Endgame | 2019 | 11.094.720.000 |
+| Spider-man: No Way Home | 2021 | 10.977.782.882,74 |
+| Avengers: Infinity War | 2018 | 7.190.430.847,63 |
+| Top Gun: Maverick | 2022 | 7.160.804.869,01 |
+| Barbie | 2023 | 6.856.159.007,38 |
+| The Super Mario Bros. Movie | 2023 | 6.838.413.799,10 |
+| The Lion King | 2019 | 6.227.552.146,58 |
+| Frozen Ii | 2019 | 6.094.028.191,32 |
+| Jurassic World: Fallen Kingdom | 2018 | 4.934.822.930,85 |
+
+**SQL executado**
+```sql
+SELECT m.titulo, m.ano_lancamento, f.receita_brl AS receita_brl
+FROM fact_movies_performance f
+JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+WHERE f.receita_brl > 0
+ORDER BY f.receita_brl DESC
+LIMIT 10
+```
+
+### 2. Qual o lucro médio por gênero, considerando apenas filmes com receita informada?
+- **Categoria:** Bilheteria e Finanças · **ID:** `fin_lucro_medio_genero`
+- **Tipo/Padrão de SQL:** CTE de filtragem + multi-join via bridge (`bridge_movie_genre`) + agregação `AVG` / `GROUP BY`
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ⚠️ Aprovada no teste automatizado, **com ressalva**: o agente aplicou `LIMIT 10` e devolveu 10 dos 19 gêneros. O gabarito lista todos. O teste compara só as primeiras linhas, então o corte não foi detectado. Ver "Ressalvas" abaixo.
+
+**Resumo executivo (integral)**
+
+> O gênero com maior lucro médio foi **Science Fiction**, com **US$ 183,055,334,67** por filme, seguido de perto por **Adventure**, cuja média foi **US$ 181,399,653,22** – uma diferença de aproximadamente **US$ 1,655,681,45**. Os demais gêneros apresentaram lucros médios que variam entre **US$ 126,985,391,65** (Fantasy) e **US$ 41,516,368,31** (Horror), com amostras que vão de 45 a 379 filmes. A análise considerou apenas filmes com receita e orçamento positivos, e os valores foram arredondados a duas casas decimais.
+
+**Premissas**
+- Lucro calculado como receita_usd - orcamento_usd (USD).
+- Considerados apenas filmes com receita > 0 e orçamento > 0, conforme regra de negócio para análise de lucro.
+- Média arredondada com 2 casas decimais.
+- Resultado limitado aos 10 gêneros com maior lucro médio (padrão para perguntas no plural).
+
+**Dados retornados**
+
+| nome_genero | lucro_medio_usd | qtd_filmes |
+| --- | --- | --- |
+| Science Fiction | 183.055.334,67 | 134 |
+| Adventure | 181.399.653,22 | 246 |
+| Fantasy | 126.985.391,65 | 134 |
+| Animation | 126.541.446,29 | 97 |
+| Family | 116.663.901,69 | 142 |
+| Action | 114.110.307,89 | 379 |
+| War | 63.179.459,23 | 57 |
+| Music | 52.139.511,67 | 45 |
+| Comedy | 50.932.226,53 | 403 |
+| Horror | 41.516.368,31 | 168 |
+
+**SQL executado**
+```sql
+WITH filtered AS (
+    SELECT f.sk_movie_id,
+           (f.receita_usd - f.orcamento_usd) AS lucro_usd
+    FROM fact_movies_performance f
+    WHERE f.receita_usd > 0
+      AND f.orcamento_usd > 0
+)
+SELECT g.nome_genero,
+       ROUND(AVG(fil.lucro_usd), 2) AS lucro_medio_usd,
+       COUNT(*) AS qtd_filmes
+FROM filtered fil
+JOIN dim_movies m ON m.sk_movie_id = fil.sk_movie_id
+JOIN bridge_movie_genre bg ON bg.sk_movie_id = m.sk_movie_id
+JOIN dim_genres g ON g.sk_genre_id = bg.sk_genre_id
+GROUP BY g.sk_genre_id, g.nome_genero
+ORDER BY lucro_medio_usd DESC
+LIMIT 10
+```
+
+### 3. Quais filmes têm a maior margem de lucro, entre os que possuem receita e orçamento informados?
+- **Categoria:** Bilheteria e Finanças · **ID:** `fin_maior_margem`
+- **Tipo/Padrão de SQL:** Join fato × dimensão + métrica derivada (margem calculada na consulta) + ranking Top-N
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O filme com a maior margem de lucro é **Secret Superstar** (2017), apresentando margem de **479,0** (receita de US$ 137,416,709 e orçamento de US$ 286,284). Em segundo lugar vem **Demond The Movie** (2021), com margem de **299,0** (receita US$ 3,000,000 e orçamento US$ 10,000), seguido por **Unbound** (2018), cuja margem é **261,5** (receita US$ 21,000,000 e orçamento US$ 80,000). Observa‑se que alguns registros apresentam possíveis problemas de qualidade, como o título “Ariana Grande - Positions Album (official Live Performances) | Vevo”, que não parece ser um filme, e o nome “Demond The Movie”, que pode conter erro de digitação.
+
+**Premissas**
+- Margem de lucro calculada como (receita - orçamento) / orçamento usando valores em USD.
+- Apenas filmes com receita > 0, orçamento > 0 e orçamento >= 10.000 USD são considerados, conforme regras de negócio para análise de margem.
+
+**Dados retornados**
+
+| titulo | ano_lancamento | receita_usd | orcamento_usd | lucro_usd | margem_lucro |
+| --- | --- | --- | --- | --- | --- |
+| Secret Superstar | 2017 | 137.416.709 | 286.284 | 137.130.425 | 479,00 |
+| Demond The Movie | 2021 | 3.000.000 | 10.000 | 2.990.000 | 299,00 |
+| Unbound | 2018 | 21.000.000 | 80.000 | 20.920.000 | 261,50 |
+| Me Against You: Mr. S's Vendetta | 2020 | 9.500.000 | 75.000 | 9.425.000 | 125,67 |
+| Dragon Ball Super: Broly | 2018 | 125.002.821 | 1.000.000 | 124.002.821 | 124,00 |
+| Ariana Grande - Positions Album (official Live Performances) \| Vevo | 2021 | 3.000.000 | 25.000 | 2.975.000 | 119,00 |
+| The Farewell | 2019 | 23.076.657 | 250.300 | 22.826.357 | 91,20 |
+| The Villainess | 2017 | 8.737.458 | 125.000 | 8.612.458 | 68,90 |
+| Terrifier 2 | 2022 | 15.065.239 | 250.000 | 14.815.239 | 59,26 |
+| Get Out | 2017 | 255.407.969 | 4.500.000 | 250.907.969 | 55,76 |
+
+**SQL executado**
+```sql
+SELECT m.titulo,
+       m.ano_lancamento,
+       f.receita_usd,
+       f.orcamento_usd,
+       (f.receita_usd - f.orcamento_usd) AS lucro_usd,
+       ROUND(((f.receita_usd - f.orcamento_usd) * 1.0 / f.orcamento_usd), 2) AS margem_lucro
+FROM fact_movies_performance f
+JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+WHERE f.receita_usd > 0
+  AND f.orcamento_usd > 0
+  AND f.orcamento_usd >= 10000
+ORDER BY margem_lucro DESC
+LIMIT 10
+```
+
+### 4. Quais são os 5 filmes mais populares?
+- **Categoria:** Popularidade e Engajamento · **ID:** `pop_top5_populares`
+- **Tipo/Padrão de SQL:** Join fato × dimensão + ranking Top-N (`LIMIT 5`)
+- **Linhas retornadas:** 5 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> Os cinco filmes mais populares são liderados por **Blue Beetle** (popularidade 2 994,357), seguido de **Gran Turismo** (2 680,593) e **La Fellinette** (2 020,0). A diferença entre o primeiro e o segundo lugar é de aproximadamente 313,764 pontos de popularidade. Observa‑se que alguns títulos apresentam valores de popularidade muito próximos ou iguais ao ano de lançamento (ex.: La Fellinette 2020.0, The Fear Footage 2: Curse Of The Tape 2019.0 e Wwe Survivor Series 2018 2018.0), o que pode indicar problemas de qualidade nos dados.
+
+**Premissas**
+- _(o agente não registrou premissas)_
+
+**Dados retornados**
+
+| titulo | ano_lancamento | popularidade |
+| --- | --- | --- |
+| Blue Beetle | 2023 | 2.994,36 |
+| Gran Turismo | 2023 | 2.680,59 |
+| La Fellinette | 2020 | 2.020,00 |
+| The Fear Footage 2: Curse Of The Tape | 2020 | 2.019,00 |
+| Wwe Survivor Series 2018 | 2018 | 2.018,00 |
+
+**SQL executado**
+```sql
+SELECT m.titulo, m.ano_lancamento, f.popularidade
+FROM fact_movies_performance f
+JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+ORDER BY f.popularidade DESC
+LIMIT 5
+```
+
+### 5. Quais filmes têm a maior divergência entre a nota TMDB e a nota IMDb?
+- **Categoria:** Popularidade e Engajamento · **ID:** `pop_divergencia_tmdb_imdb`
+- **Tipo/Padrão de SQL:** CTE + métrica derivada entre fontes (`ABS(nota_tmdb - nota_imdb)`) + filtros de amostra mínima (P2) + ranking
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O filme com a maior divergência entre as notas TMDB e IMDb é **“Me Against You: Mr. S's Vendetta”** (2020), cuja diferença absoluta é de **6,43 pontos** (nota TMDB 8,13 vs. nota IMDb 1,7, com 460 e 511 avaliações, respectivamente). Em segundo lugar vem **“It's Me Against You - The Mystery Of The Spellbound School”** (2021), com divergência de **6,30 pontos** (nota TMDB 8,5 vs. nota IMDb 2,2, 72 e 177 avaliações), ou seja, apenas **0,13 ponto** a menos que o líder. Observa‑se que alguns títulos são muito semelhantes (ex.: as duas primeiras linhas), o que pode indicar cadastros duplicados na fonte, e que a amostra TMDB de “Viking: Bloodlust” está próxima do limite mínimo exigido (52 avaliações). Todos os filmes listados atendem aos critérios de qtd_tmdb ≥ 50 e qtd_imdb ≥ 50.
+
+**Premissas**
+- Divergência calculada como a diferença absoluta entre nota TMDB e nota IMDb.
+- Para comparação entre fontes, exigimos amostra mínima: qtd_tmdb >= 50 e qtd_imdb >= 50.
+- Somente filmes com nota IMDb não nula são considerados.
+- Resultados ordenados pela maior divergência, limitados aos top 10.
+
+**Dados retornados**
+
+| titulo | ano_lancamento | nota_tmdb | qtd_tmdb | nota_imdb | qtd_imdb | divergencia |
+| --- | --- | --- | --- | --- | --- | --- |
+| Me Against You: Mr. S's Vendetta | 2020 | 8,13 | 460 | 1,70 | 511 | 6,43 |
+| It's Me Against You - The Mystery Of The Spellbound School | 2021 | 8,50 | 72 | 2,20 | 177 | 6,30 |
+| 5gang: A Different Kind Of Christmas | 2019 | 8,20 | 104 | 2,00 | 3.451 | 6,20 |
+| Viking: Bloodlust | 2023 | 6,93 | 52 | 2,20 | 363 | 4,73 |
+| Baaghi 3 | 2020 | 6,80 | 99 | 2,30 | 18.231 | 4,50 |
+| Beneath The Surface | 2022 | 6,63 | 60 | 2,40 | 242 | 4,22 |
+| Harry And Meghan: Escaping The Palace | 2021 | 6,76 | 153 | 2,60 | 1.485 | 4,16 |
+| Megalodon Rising | 2021 | 6,11 | 125 | 2,10 | 1.090 | 4,01 |
+| Arctic Apocalypse | 2019 | 6,20 | 165 | 2,20 | 746 | 4,00 |
+| The Immortal Wars: Resurgence | 2019 | 5,97 | 70 | 2,00 | 261 | 3,97 |
+
+**SQL executado**
+```sql
+WITH filtered AS (
+    SELECT m.titulo,
+           m.ano_lancamento,
+           f.nota_tmdb,
+           f.qtd_tmdb,
+           f.nota_imdb,
+           f.qtd_imdb,
+           ABS(f.nota_tmdb - f.nota_imdb) AS divergencia
+    FROM fact_movies_performance f
+    JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+    WHERE f.qtd_tmdb >= 50
+      AND f.qtd_imdb >= 50
+      AND f.nota_imdb IS NOT NULL
+)
+SELECT titulo,
+       ano_lancamento,
+       ROUND(nota_tmdb, 2) AS nota_tmdb,
+       qtd_tmdb,
+       ROUND(nota_imdb, 2) AS nota_imdb,
+       qtd_imdb,
+       ROUND(divergencia, 2) AS divergencia
+FROM filtered
+ORDER BY divergencia DESC
+LIMIT 10
+```
+
+### 6. Qual a nota média IMDb por ano de lançamento?
+- **Categoria:** Popularidade e Engajamento · **ID:** `pop_imdb_por_ano`
+- **Tipo/Padrão de SQL:** Agregação temporal (`AVG` / `GROUP BY ano_lancamento`) com série ordenada por ano
+- **Linhas retornadas:** 13 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> Entre 2016 e 2024 a nota média IMDb variou entre 6,15 e 6,34, com as maiores médias em 2016 e 2017 (6,34) e a menor em 2024 (6,15), calculadas a partir de mais de 9 mil filmes por ano. A partir de 2025 as médias apresentam oscilações bruscas (6,58 em 2025, 7,5 em 2026, 6,4 em 2027 e 3,8 em 2029), mas cada um desses anos possui amostra extremamente reduzida (4, 1, 2 e 1 filme respectivamente), o que indica possível problema de qualidade ou dados de placeholder. Além disso, 2024 mostra uma queda abrupta no volume (1 621 filmes) em relação aos anos anteriores, sugerindo que o conjunto de dados pode estar incompleto para os lançamentos mais recentes.
+
+**Premissas**
+- Nota IMDb considerada apenas quando nota_imdb IS NOT NULL (sem requisito mínimo de votos para médias simples).
+- Agregação por ano de lançamento inclui todos os filmes com nota IMDb disponível, independentemente do status de lançamento.
+
+**Dados retornados**
+
+| ano_lancamento | nota_media_imdb | qtd_filmes |
+| --- | --- | --- |
+| 2016 | 6,34 | 10.381 |
+| 2017 | 6,34 | 11.189 |
+| 2018 | 6,27 | 11.327 |
+| 2019 | 6,26 | 11.637 |
+| 2020 | 6,24 | 9.534 |
+| 2021 | 6,23 | 9.578 |
+| 2022 | 6,23 | 9.887 |
+| 2023 | 6,23 | 7.809 |
+| 2024 | 6,15 | 1.621 |
+| 2025 | 6,58 | 4 |
+| 2026 | 7,50 | 1 |
+| 2027 | 6,40 | 2 |
+| 2029 | 3,80 | 1 |
+
+**SQL executado**
+```sql
+SELECT m.ano_lancamento,
+       ROUND(AVG(f.nota_imdb), 2) AS nota_media_imdb,
+       COUNT(*) AS qtd_filmes
+FROM fact_movies_performance f
+JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+WHERE f.nota_imdb IS NOT NULL
+GROUP BY m.ano_lancamento
+ORDER BY m.ano_lancamento
+LIMIT 200
+```
+
+### 7. Qual ator teve mais participações em filmes lançados nos últimos 5 anos?
+- **Categoria:** Elenco e Equipe · **ID:** `cast_ator_mais_filmes_5anos`
+- **Tipo/Padrão de SQL:** Múltiplas CTEs (ano de referência dinâmico via `CROSS JOIN`) + multi-join via bridge + agregação por pessoa + Top-N
+- **Linhas retornadas:** 5 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> Eric Roberts foi o ator com maior número de participações em filmes lançados nos últimos 5 anos, contabilizando 54 obras. Ele ficou à frente de quatro atores que empataram em segundo lugar, cada um com 37 filmes, ou seja, uma diferença de 17 participações em relação ao próximo colocado. Não foram identificadas anomalias de qualidade nos dados apresentados e o resultado traz o top 5 solicitado, portanto não há truncamento relevante.
+
+**Premissas**
+- Últimos 5 anos relativo ao ano mais recente com filmes lançados no banco.
+- Considera apenas filmes com status 'Lançado'.
+- Contagem de participações por ator (sk_person_id).
+- Retorna o top 5 para dar contexto, sendo o 1º colocado a resposta.
+
+**Dados retornados**
+
+| nome_pessoa | qtd_filmes |
+| --- | --- |
+| Eric Roberts | 54 |
+| David Love | 37 |
+| Anton Pelizzari | 37 |
+| Cameron Nichols | 37 |
+| Jazzyjoeyjr | 37 |
+
+**SQL executado**
+```sql
+WITH ref AS (
+    SELECT MAX(ano_lancamento) AS ano_max
+    FROM dim_movies
+    WHERE status_filme = 'Lançado'
+),
+actor_movies AS (
+    SELECT p.sk_person_id, p.nome_pessoa
+    FROM dim_people p
+    JOIN bridge_movie_person bp ON bp.sk_person_id = p.sk_person_id
+    JOIN dim_movies m ON m.sk_movie_id = bp.sk_movie_id
+    CROSS JOIN ref
+    WHERE p.tipo_pessoa = 'Ator'
+      AND m.status_filme = 'Lançado'
+      AND m.ano_lancamento > ref.ano_max - 5
+)
+SELECT am.nome_pessoa, COUNT(*) AS qtd_filmes
+FROM actor_movies am
+GROUP BY am.sk_person_id, am.nome_pessoa
+ORDER BY qtd_filmes DESC
+LIMIT 5
+```
+
+### 8. Quais diretores têm a maior nota média (mínimo de 5 filmes)?
+- **Categoria:** Elenco e Equipe · **ID:** `cast_diretores_maior_nota`
+- **Tipo/Padrão de SQL:** CTE + multi-join via bridge (`bridge_movie_person`) + agregação `AVG` com `HAVING COUNT(*) >= 5` + ranking
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O diretor com a maior nota média IMDb, considerando apenas aqueles com pelo menos cinco filmes, é **Scott Wozniak**, cuja média é **9,34** em cinco títulos. Ele fica à frente de **Yūichirō Hayashi** e **Jun Shishido**, que empatam em segundo lugar com média de **9,19** cada um (diferença de **0,15** ponto para o líder). Não há indícios óbvios de problemas de qualidade nos dados apresentados (sem títulos duplicados, valores extremos ou popularidades equivocadas). O resultado mostra os dez primeiros colocados; pode haver outros diretores além dessa lista que também atendem ao critério de mínimo de cinco filmes.
+
+**Premissas**
+- Nota considerada é IMDb (nota_imdb).
+- Apenas diretores (tipo_pessoa = 'Diretor').
+- Filmes com nota IMDb nula são excluídos.
+- Mínimo de 5 filmes por diretor para entrar no ranking.
+- Média arredondada com 2 casas decimais.
+
+**Dados retornados**
+
+| nome_pessoa | media_nota | qtd_filmes |
+| --- | --- | --- |
+| Scott Wozniak | 9,34 | 5 |
+| Yūichirō Hayashi | 9,19 | 8 |
+| Jun Shishido | 9,19 | 8 |
+| Trevor L. Allen | 9,15 | 6 |
+| Alonso O. Lara | 9,09 | 14 |
+| Tokio Igarashi | 9,00 | 5 |
+| Erlik | 8,95 | 6 |
+| Stuart Webster | 8,88 | 5 |
+| Mark Fischbach | 8,83 | 6 |
+| John D. Boswell | 8,70 | 8 |
+
+**SQL executado**
+```sql
+WITH dir_movies AS (
+    SELECT p.sk_person_id, p.nome_pessoa, f.nota_imdb
+    FROM dim_people p
+    JOIN bridge_movie_person bp ON bp.sk_person_id = p.sk_person_id
+    JOIN fact_movies_performance f ON f.sk_movie_id = bp.sk_movie_id
+    WHERE p.tipo_pessoa = 'Diretor'
+      AND f.nota_imdb IS NOT NULL
+)
+SELECT dm.nome_pessoa,
+       ROUND(AVG(dm.nota_imdb), 2) AS media_nota,
+       COUNT(*) AS qtd_filmes
+FROM dir_movies dm
+GROUP BY dm.sk_person_id, dm.nome_pessoa
+HAVING COUNT(*) >= 5
+ORDER BY media_nota DESC, qtd_filmes DESC
+LIMIT 10
+```
+
+### 9. Qual dupla ator-diretor mais trabalhou junta?
+- **Categoria:** Elenco e Equipe · **ID:** `cast_dupla_ator_diretor`
+- **Tipo/Padrão de SQL:** CTEs `MATERIALIZED` por papel + join de co-ocorrência (pares no mesmo filme) + Top-N dentro de CTE + re-join com `dim_people`
+- **Linhas retornadas:** 5 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> A dupla que mais colaborou foi Joe Anoa'i (ator) e Kevin Dunn (diretor), com 37 filmes juntos. Em segundo lugar ficou Colby Lopez também com Kevin Dunn, com 32 filmes, enquanto o primeiro tem 37. Além disso, o diretor Kevin Dunn aparece em duas das cinco primeiras posições e há um empate em 31 filmes entre três pares, sugerindo possível concentração de trabalho ou duplicidade de cadastros, e como só o top 5 foi exibido, outros pares com valores semelhantes podem não estar visíveis.
+
+**Premissas**
+- Consideramos todos os filmes presentes no banco (não filtramos por status de lançamento).
+- A mesma pessoa pode aparecer tanto como ator quanto como diretor (cadastros distintos por papel).
+- Retornamos o top 5 de pares ator‑diretor para fornecer contexto; o primeiro colocado é a resposta à pergunta.
+
+**Dados retornados**
+
+| ator | diretor | qtd_filmes |
+| --- | --- | --- |
+| Joe Anoa'i | Kevin Dunn | 37 |
+| Colby Lopez | Kevin Dunn | 32 |
+| David Love | Chad Payne | 31 |
+| Anton Pelizzari | Chad Payne | 31 |
+| Cameron Nichols | Chad Payne | 31 |
+
+**SQL executado**
+```sql
+WITH
+  atores AS MATERIALIZED (
+    SELECT bp.sk_movie_id, bp.sk_person_id
+    FROM dim_people p
+    JOIN bridge_movie_person bp ON bp.sk_person_id = p.sk_person_id
+    WHERE p.tipo_pessoa = 'Ator'
+  ),
+  diretores AS MATERIALIZED (
+    SELECT bp.sk_movie_id, bp.sk_person_id
+    FROM dim_people p
+    JOIN bridge_movie_person bp ON bp.sk_person_id = p.sk_person_id
+    WHERE p.tipo_pessoa = 'Diretor'
+  ),
+  pares AS (
+    SELECT a.sk_person_id AS ator_id, d.sk_person_id AS diretor_id, COUNT(*) AS qtd_filmes
+    FROM atores a
+    JOIN diretores d ON d.sk_movie_id = a.sk_movie_id
+    GROUP BY a.sk_person_id, d.sk_person_id
+    ORDER BY qtd_filmes DESC
+    LIMIT 5
+  )
+SELECT at.nome_pessoa AS ator, dir.nome_pessoa AS diretor, p.qtd_filmes
+FROM pares p
+JOIN dim_people at ON at.sk_person_id = p.ator_id
+JOIN dim_people dir ON dir.sk_person_id = p.diretor_id
+ORDER BY p.qtd_filmes DESC
+LIMIT 200
+```
+
+### 10. Qual a quantidade de filmes por gênero?
+- **Categoria:** Gêneros e Produtoras · **ID:** `gen_qtd_por_genero`
+- **Tipo/Padrão de SQL:** Join bridge × dimensão + agregação `COUNT` / `GROUP BY`
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ⚠️ Aprovada no teste automatizado, **com ressalva**: o agente aplicou `LIMIT 10` e devolveu 10 dos 19 gêneros. O gabarito lista todos. O teste compara só as primeiras linhas, então o corte não foi detectado. Ver "Ressalvas" abaixo.
+
+**Resumo executivo (integral)**
+
+> O gênero mais frequente é **Drama**, com **28.086** filmes, seguido de **Documentary** (18.082) e **Comedy** (16.048). Os dez gêneros listados representam a maior parte da distribuição, mas o resultado está truncado e pode haver outros gêneros não exibidos. Não foram observadas anomalias evidentes de qualidade nos dados apresentados.
+
+**Premissas**
+- Cada filme pode estar associado a mais de um gênero; nesse caso, ele é contado em cada gênero ao qual pertence. Não foram aplicados filtros de status, ano de lançamento ou receita/orçamento, pois a pergunta pede a quantidade bruta de filmes por gênero.
+
+**Dados retornados**
+
+| nome_genero | qtd_filmes |
+| --- | --- |
+| Drama | 28.086 |
+| Documentary | 18.082 |
+| Comedy | 16.048 |
+| Horror | 8.674 |
+| Thriller | 8.540 |
+| Romance | 6.209 |
+| Action | 5.028 |
+| Animation | 3.911 |
+| Crime | 3.902 |
+| Tv Movie | 3.336 |
+
+**SQL executado**
+```sql
+SELECT g.nome_genero,
+       COUNT(*) AS qtd_filmes
+FROM bridge_movie_genre bg
+JOIN dim_genres g ON g.sk_genre_id = bg.sk_genre_id
+GROUP BY g.sk_genre_id, g.nome_genero
+ORDER BY qtd_filmes DESC
+LIMIT 10
+```
+
+### 11. Qual produtora tem o maior lucro total?
+- **Categoria:** Gêneros e Produtoras · **ID:** `gen_produtora_maior_lucro`
+- **Tipo/Padrão de SQL:** Multi-join via bridge (`bridge_movie_company`) + agregação `SUM` / `GROUP BY` + ranking Top-N
+- **Linhas retornadas:** 5 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> A produtora com maior lucro total é a **Marvel Studios**, que obteve **US$ 14.897.936.776** de lucro considerando apenas filmes com receita e orçamento informados (receita_usd > 0 e orcamento_usd > 0). Ela fica à frente da **Universal Pictures**, segunda colocada, com **US$ 13.691.646.318**, uma diferença de aproximadamente **US$ 1.206 bilhão**, apesar de ter produzido muito menos filmes (17 contra 91). As demais produtoras no ranking são Columbia Pictures, Warner Bros. Pictures e Walt Disney Pictures, com lucros entre **US$ 9,4** e **US$ 9,9 bilhões**. (Resultado limitado às 5 primeiras linhas; nenhuma anomalia de qualidade foi evidente nos dados apresentados.)
+
+**Premissas**
+- Lucro total em USD considerando apenas filmes com receita e orçamento informados (receita_usd > 0 e orcamento_usd > 0).
+- Resultado limitado às 5 produtoras com maior lucro total para fornecer contexto; a primeira linha é a produtora com maior lucro.
+
+**Dados retornados**
+
+| nome_produtora | lucro_total_usd | qtd_filmes |
+| --- | --- | --- |
+| Marvel Studios | 14.897.936.776 | 17 |
+| Universal Pictures | 13.691.646.318 | 91 |
+| Columbia Pictures | 9.853.057.126 | 52 |
+| Warner Bros. Pictures | 9.490.342.370 | 61 |
+| Walt Disney Pictures | 9.431.052.715 | 34 |
+
+**SQL executado**
+```sql
+SELECT c.nome_produtora,
+       SUM(f.lucro_usd) AS lucro_total_usd,
+       COUNT(*) AS qtd_filmes
+FROM fact_movies_performance f
+JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+JOIN bridge_movie_company bc ON bc.sk_movie_id = m.sk_movie_id
+JOIN dim_companies c ON c.sk_company_id = bc.sk_company_id
+WHERE f.receita_usd > 0
+  AND f.orcamento_usd > 0
+GROUP BY c.sk_company_id, c.nome_produtora
+ORDER BY lucro_total_usd DESC
+LIMIT 5
+```
+
+### 12. Qual gênero tem a maior margem de lucro média?
+- **Categoria:** Gêneros e Produtoras · **ID:** `gen_maior_margem_media`
+- **Tipo/Padrão de SQL:** CTE de métrica por filme + multi-join via bridge + agregação `AVG` por gênero + ranking Top-N
+- **Linhas retornadas:** 5 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O gênero com a maior margem de lucro média é **Music**, apresentando uma margem média de **15,55** com base em **44** filmes lançados. Em seguida vem **Science Fiction**, cuja margem média é de **4,03** – cerca de 74 % inferior à de Music. Os demais gêneros (Horror, Thriller e Adventure) ficam entre **3,7** e **3,99**, com amostras consideravelmente maiores (de 128 a 308 filmes cada), o que pode tornar a estimativa de Music menos estável devido ao seu número relativamente baixo de observações.
+
+**Premissas**
+- Consideramos apenas filmes lançados (status_filme = 'Lançado').
+- Margem de lucro calculada em USD: (receita_usd - orcamento_usd) / orcamento_usd.
+- Filmes com receita_usd > 0 e orcamento_usd > 0 (conforme regra de lucro/margem).
+- Orçamento mínimo de 10.000 USD para evitar distorções por valores irrisórios.
+- A média é calculada por gênero e os gêneros são ordenados pela margem média decrescente.
+- Retornamos o top 5 gêneros para fornecer contexto; o primeiro é o gênero com maior margem média.
+
+**Dados retornados**
+
+| nome_genero | margem_lucro_media | qtd_filmes |
+| --- | --- | --- |
+| Music | 15,55 | 44 |
+| Science Fiction | 4,03 | 128 |
+| Horror | 3,99 | 150 |
+| Thriller | 3,85 | 308 |
+| Adventure | 3,70 | 241 |
+
+**SQL executado**
+```sql
+WITH movie_margins AS (
+    SELECT
+        g.sk_genre_id,
+        g.nome_genero,
+        (f.receita_usd - f.orcamento_usd) * 1.0 / f.orcamento_usd AS margem
+    FROM fact_movies_performance f
+    JOIN dim_movies m ON m.sk_movie_id = f.sk_movie_id
+    JOIN bridge_movie_genre bg ON bg.sk_movie_id = m.sk_movie_id
+    JOIN dim_genres g ON g.sk_genre_id = bg.sk_genre_id
+    WHERE m.status_filme = 'Lançado'
+      AND f.receita_usd > 0
+      AND f.orcamento_usd > 0
+      AND f.orcamento_usd >= 10000
+)
+SELECT
+    nome_genero,
+    ROUND(AVG(margem), 2) AS margem_lucro_media,
+    COUNT(*) AS qtd_filmes
+FROM movie_margins
+GROUP BY sk_genre_id, nome_genero
+ORDER BY margem_lucro_media DESC
+LIMIT 5
+```
+
+### 13. Quais filmes foram mais avaliados pelos usuários?
+- **Categoria:** Avaliações dos Usuários · **ID:** `rev_mais_avaliados`
+- **Tipo/Padrão de SQL:** Join dimensão × dimensão (`dim_movies` × `dim_reviews`) + ranking Top-N
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O filme mais avaliado pelos usuários foi **“Die Hart 2: Die Harter”**, com **13** avaliações registradas. Em seguida, outras entradas do mesmo título aparecem com **12** avaliações, enquanto o filme **“Die Hart: Die Harter”** apresenta **11** avaliações, seguindo uma contagem decrescente até **9** nas linhas exibidas. Nota‑se que o mesmo título ocorre várias vezes com contagens diferentes, sugerindo possível duplicidade de cadastros na origem, e que o resultado está limitado às 10 primeiras linhas, podendo haver outros filmes não listados. Esses números são relativamente baixos (máximo de 13), o que pode indicar uma amostra pequena ou dados ainda em fase de coleta, conforme a premissa de considerar apenas filmes com qtd_avaliacoes_usuarios não nulo.
+
+**Premissas**
+- Consideramos apenas filmes que possuem registro de avaliações de usuários (qtd_avaliacoes_usuarios não nulo).
+
+**Dados retornados**
+
+| titulo | ano_lancamento | qtd_avaliacoes_usuarios |
+| --- | --- | --- |
+| Die Hart 2: Die Harter | 2024 | 13 |
+| Die Hart 2: Die Harter | 2024 | 12 |
+| Die Hart: Die Harter | 2024 | 11 |
+| Die Hart: Die Harter | 2024 | 10 |
+| Die Hart: Die Harter | 2024 | 10 |
+| Die Hart: Die Harter | 2024 | 10 |
+| Die Hart 2: Die Harter | 2024 | 10 |
+| Die Hart 2: Die Harter | 2024 | 9 |
+| Die Hart 2: Die Harter | 2024 | 9 |
+| Die Hart 2: Die Harter | 2024 | 9 |
+
+**SQL executado**
+```sql
+SELECT m.titulo, m.ano_lancamento, r.qtd_avaliacoes_usuarios
+FROM dim_movies m
+JOIN dim_reviews r ON r.sk_movie_id = m.sk_movie_id
+WHERE r.qtd_avaliacoes_usuarios IS NOT NULL
+ORDER BY r.qtd_avaliacoes_usuarios DESC
+LIMIT 10
+```
+
+### 14. Em quais filmes a nota média dos usuários mais diverge da nota IMDb?
+- **Categoria:** Avaliações dos Usuários · **ID:** `rev_divergencia_usuarios_imdb`
+- **Tipo/Padrão de SQL:** Join de 3 tabelas (duas fontes de nota) + métrica derivada `ABS` + filtros de amostra mínima (P2) + ranking
+- **Linhas retornadas:** 10 · **Chamadas ao LLM nesta execução:** 1 (resumo)
+- **Status da validação:** ✅ Aprovada (compatível com o gabarito oficial)
+
+**Resumo executivo (integral)**
+
+> O filme com maior divergência entre a nota média dos usuários e a nota IMDb é "Bittersweet Memories: 14 Isolated Days To Make An Album", com diferença absoluta de 7,07 pontos (usuários 2,43 vs IMDb 9,5). Em segundo lugar aparece "Save Ralph", com diferença de 7,03 pontos (usuários 1,37 vs IMDb 8,4), seguido por "One Piece Fan Letter" (duas entradas) com diferenças de aproximadamente 6,369999999999999 e 6,229999999999999 pontos. Observa‑se que o resultado contém possíveis duplicidades (ex.: "One Piece Fan Letter" aparece duas vezes para o mesmo ano) e notas de usuários extremamente baixas (como 0,8 para "Velvet Buzzsaw"), o que pode indicar problemas de qualidade nos dados; além disso, a lista está limitada aos 10 maiores desvios conforme as premissas de pelo menos 3 avaliações de usuários e 50 votos IMDb.
+
+**Premissas**
+- Divergência calculada como diferença absoluta entre a nota média dos usuários (dim_reviews.nota_media_usuarios) e a nota IMDb (fact_movies_performance.nota_imdb).
+- Para comparação entre fontes, exigimos amostra mínima: pelo menos 3 avaliações de usuários (qtd_avaliacoes_usuarios >= 3) e pelo menos 50 votos IMDb (qtd_imdb >= 50).
+- Consideramos apenas filmes que possuem ambas as notas disponíveis (não nulas).
+- Os resultados são ordenados pela maior divergência e limitados a 10 filmes (padrão para perguntas no plural).
+
+**Dados retornados**
+
+| titulo | ano_lancamento | nota_media_usuarios | nota_imdb | diferenca |
+| --- | --- | --- | --- | --- |
+| Bittersweet Memories: 14 Isolated Days To Make An Album | 2023 | 2,43 | 9,50 | 7,07 |
+| Save Ralph | 2021 | 1,37 | 8,40 | 7,03 |
+| One Piece Fan Letter | 2024 | 2,83 | 9,20 | 6,37 |
+| One Piece Fan Letter | 2024 | 2,97 | 9,20 | 6,23 |
+| The Internet And You | 2016 | 3,70 | 9,10 | 5,40 |
+| The Rose Family | 2020 | 2,43 | 7,70 | 5,27 |
+| Ena: Temptation Stairway | 2021 | 3,63 | 8,80 | 5,17 |
+| Bunch Of Kunst - A Film About Sleaford Mods | 2017 | 2,23 | 7,40 | 5,17 |
+| More Than He Knows | 2019 | 2,47 | 7,50 | 5,03 |
+| Velvet Buzzsaw | 2019 | 0,80 | 5,70 | 4,90 |
+
+**SQL executado**
+```sql
+SELECT m.titulo,
+       m.ano_lancamento,
+       dr.nota_media_usuarios,
+       f.nota_imdb,
+       ABS(dr.nota_media_usuarios - f.nota_imdb) AS diferenca
+FROM dim_movies m
+JOIN fact_movies_performance f ON f.sk_movie_id = m.sk_movie_id
+JOIN dim_reviews dr ON dr.sk_movie_id = m.sk_movie_id
+WHERE dr.qtd_avaliacoes_usuarios >= 3
+  AND f.qtd_imdb >= 50
+  AND dr.nota_media_usuarios IS NOT NULL
+  AND f.nota_imdb IS NOT NULL
+ORDER BY diferenca DESC
+LIMIT 10
+```
+
+### Ressalvas encontradas neste registro
+| # | Pergunta | Observação | Impacto | Encaminhamento |
+|---|---|---|---|---|
+| 1 | Lucro médio por gênero; quantidade de filmes por gênero | `LIMIT 10` cortou as duas listagens em 10 dos 19 gêneros. Provável efeito colateral da regra "plural → LIMIT 10" do Passo 5.1, aplicada a uma distribuição completa e não a um ranking. No caso da quantidade por gênero, o próprio resumo do agente avisa que o resultado está truncado | Resposta incompleta. O teste por prefixo não detecta | Ajustar a regra: distribuições "por categoria/ano" sem pedido de ranking retornam todas as linhas. Exige nova versão do prompt e revalidação (~14 req). **Pendente** (quota do dia insuficiente) |
+| 2 | Lucro médio por gênero; maior margem | Resumo do LLM mistura separadores (`US$ 183,055,334,67`) | Só cosmético: tabela e SQL estão corretos | Registrado como está |
+| 3 | Divergência usuários × IMDb | Resumo cita `6,369999999999999` (float sem arredondar) | Só cosmético | Registrado como está |
+| 4 | 5 filmes mais populares | Resumo escreve `2 994,357` (separador de milhar com espaço) | Só cosmético | Registrado como está |
+
+---
+
 ## Próximo ⏳
+- Corrigir a ressalva 1 do Passo 5.2 (distribuições sem `LIMIT 10`) e revalidar as 14 perguntas (~14 req).
 - `git push` manual pelo desenvolvedor.
