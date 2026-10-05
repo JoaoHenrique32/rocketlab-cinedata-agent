@@ -52,7 +52,7 @@ Toda resposta traz **resumo executivo**, **premissas** (filtros e interpretaçõ
 
 | | |
 |---|---|
-| **Acurácia** | 14/14 perguntas oficiais do case corretas na avaliação contra SQL gabarito |
+| **Acurácia** | 14/14 perguntas oficiais do case corretas na avaliação contra SQL gabarito (prompt `2026-10-05.1`; situação da versão atual em [Testes e avaliação](#testes-e-avaliação)) |
 | **Custo por pergunta** | 2 requisições (SQL + resumo), 1 com `--no-summary`, **0** em cache |
 | **Read-only garantido** | 4 camadas: regex sem strings/comentários → parser `sqlglot` → conexão `mode=ro` + `query_only` + `authorizer` → `LIMIT` e timeout |
 | **Resiliência** | Fallback entre 3 modelos `:free`, reparo de JSON malformado, retry com o erro do SQLite, degradação para resumo local |
@@ -289,7 +289,7 @@ $env:RUN_LLM_EVAL="1"; pytest -m llm
 
 - **Custo:** cerca de 14 req na primeira execução (sem resumo, mais eventuais retries/fallbacks). As execuções seguintes saem do cache (**0 req**) até o prompt mudar.
 - **Critério:** os *k* primeiros valores da coluna-chave do gabarito precisam aparecer em alguma coluna da resposta (k = menor número de linhas), comparados como multiconjunto. Isso aceita top 5 contra top 10 e empates em ordem diferente, mas reprova líder errado.
-- **Último resultado:** **14/14** (2026-10-05, `PROMPT_VERSION` `2026-10-05.1`). Detalhes por pergunta, comportamento do fallback e incidência de JSON malformado estão em [`docs/dev_log.md`](docs/dev_log.md).
+- **Último resultado:** **14/14** sob o `PROMPT_VERSION` `2026-10-05.1`. Na versão atual (`2026-10-05.2`, distribuições sem LIMIT) foram revalidados 5 casos: 4 passaram e 1 tem um desvio documentado (`pop_imdb_por_ano`). Detalhes por pergunta, comportamento do fallback e incidência de JSON malformado estão em [`docs/dev_log.md`](docs/dev_log.md).
 
 ### Qualidade de código
 

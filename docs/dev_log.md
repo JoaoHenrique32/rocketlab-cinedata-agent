@@ -1010,13 +1010,44 @@ LIMIT 10
 ### Ressalvas encontradas neste registro
 | # | Pergunta | Observação | Impacto | Encaminhamento |
 |---|---|---|---|---|
-| 1 | Lucro médio por gênero; quantidade de filmes por gênero | `LIMIT 10` cortou as duas listagens em 10 dos 19 gêneros. Provável efeito colateral da regra "plural → LIMIT 10" do Passo 5.1, aplicada a uma distribuição completa e não a um ranking. No caso da quantidade por gênero, o próprio resumo do agente avisa que o resultado está truncado | Resposta incompleta. O teste por prefixo não detecta | Ajustar a regra: distribuições "por categoria/ano" sem pedido de ranking retornam todas as linhas. Exige nova versão do prompt e revalidação (~14 req). **Pendente** (quota do dia insuficiente) |
+| 1 | Lucro médio por gênero; quantidade de filmes por gênero | `LIMIT 10` cortou as duas listagens em 10 dos 19 gêneros. Provável efeito colateral da regra "plural → LIMIT 10" do Passo 5.1, aplicada a uma distribuição completa e não a um ranking. No caso da quantidade por gênero, o próprio resumo do agente avisa que o resultado está truncado | Resposta incompleta. O teste por prefixo não detecta | Ajustar a regra: distribuições "por categoria/ano" sem pedido de ranking retornam todas as linhas. **Corrigido no Passo 5.3** (19/19 nas duas perguntas) |
 | 2 | Lucro médio por gênero; maior margem | Resumo do LLM mistura separadores (`US$ 183,055,334,67`) | Só cosmético: tabela e SQL estão corretos | Registrado como está |
 | 3 | Divergência usuários × IMDb | Resumo cita `6,369999999999999` (float sem arredondar) | Só cosmético | Registrado como está |
 | 4 | 5 filmes mais populares | Resumo escreve `2 994,357` (separador de milhar com espaço) | Só cosmético | Registrado como está |
 
 ---
 
-## Próximo ⏳
-- Corrigir a ressalva 1 do Passo 5.2 (distribuições sem `LIMIT 10`) e revalidar as 14 perguntas (~14 req).
-- `git push` manual pelo desenvolvedor.
+## Passo 5.3 — Distribuições completas sem LIMIT e revalidação focada (2026-10-05)
+
+**Status:** ✅ Concluído; revalidação parcial: 4/5 casos passaram e 1 desvio foi documentado
+
+**O que foi feito**
+| Arquivo | Mudança |
+|---|---|
+| `src/agent/prompts.py` | Regra de LIMIT dividida. **Distribuição/agrupamento completo** ("por gênero", "por ano"), sem pedido de ranking, **não usa LIMIT** e traz todas as categorias. **Rankings explícitos no plural** continuam com `LIMIT 10`. Perguntas de liderança no singular continuam com top 5. `PROMPT_VERSION` → `2026-10-05.2` (invalida o cache) |
+| `tests/golden_queries.py` | Novo campo `full_result` em `GoldenCase`, marcado nas 3 distribuições (lucro médio por gênero, nota IMDb por ano, quantidade por gênero) |
+| `tests/test_queries.py` | Com `full_result`, a avaliação exige o **mesmo número de linhas** do gabarito, além do prefixo. Fecha a brecha que deixou o corte em 10/19 passar no Passo 5.1 |
+
+**Justificativa**
+- A regra "plural → LIMIT 10" do Passo 5.1 confundia distribuição com ranking. "Lucro médio por gênero" pede o quadro completo, enquanto "Quais diretores têm a maior nota" pede um top. A distinção agora está explícita no prompt.
+- A comparação só por prefixo foi desenhada para tolerar tops de tamanhos diferentes. Em distribuições ela escondia respostas incompletas, por isso o check de contagem fica restrito a esses casos.
+- **Revalidação focada (decisão do usuário):** a quota do dia (40/50) não comportava a suíte completa (~14 req). Foram rodados os 2 casos afetados e 3 de controle, cobrindo os três tipos de LIMIT.
+
+**Validação**
+| Verificação | Resultado | Req |
+|---|---|---|
+| Suíte offline + Black + Flake8 | 140 passed, 14 skipped; lint limpo | 0 |
+| `fin_lucro_medio_genero` (distribuição) | ✅ **19/19** gêneros, sem LIMIT do modelo (só o `LIMIT 200` de segurança do guardrail); líder Science Fiction 183.055.334,67 | 1 |
+| `gen_qtd_por_genero` (distribuição) | ✅ **19/19** gêneros; líder Drama 28.086 | 1 |
+| `cast_diretores_maior_nota` (controle: ranking no plural) | ✅ `LIMIT 10`, sem filtro de votos; Scott Wozniak 9,34 em 1º | 1 |
+| `gen_produtora_maior_lucro` (controle: liderança no singular) | ✅ `LIMIT 5`; Marvel Studios 14.897.936.776 | 1 |
+| `pop_imdb_por_ano` (controle: distribuição) | ❌ **11/13** anos. **Não é LIMIT**: o modelo acrescentou `status_filme = 'Lançado'` sem a pergunta pedir. Saem 2027 e 2029 (3 filmes ao todo) e mudam as contagens de 2020, 2023, 2024 e 2025. Os anos 2016–2022 coincidem com o gabarito. Antes passava só porque a comparação era por prefixo; o check novo detectou | 1 |
+
+Quota em 2026-10-05: 45/50.
+
+**Ressalva em aberto: `pop_imdb_por_ano`**
+- A leitura do modelo (média só de filmes lançados) é defensável, mas diverge da regra de negócio, que só filtra status quando a pergunta diz "lançados". A premissa aparece na resposta ("Consideramos apenas filmes com status 'Lançado'…"), então o usuário vê o critério aplicado.
+- Corrigir exigiria reforçar a regra no prompt, mudar de novo a versão (o que apaga o cache dos 5 casos) e revalidar com as 5 req restantes, sem margem para retry. Ficou fora por decisão de risco no dia da entrega.
+- O SQL com o filtro está no cache da versão `2026-10-05.2`, então uma demonstração dessa pergunta mostra a versão com 11 anos.
+
+**Cobertura da versão `2026-10-05.2`:** 5 de 14 perguntas revalidadas. As outras 9 passaram (14/14) sob `2026-10-05.1`, e a única mudança desde então é a regra de LIMIT. Elas **não** foram reexecutadas nesta versão e não têm cache: na primeira consulta, cada uma gera SQL novo (1 req).

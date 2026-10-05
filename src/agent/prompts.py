@@ -15,7 +15,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-PROMPT_VERSION = "2026-10-05.1"
+PROMPT_VERSION = "2026-10-05.2"
 SUMMARY_MAX_ROWS = 50
 
 
@@ -156,9 +156,13 @@ BUSINESS_RULES = """\
   depois faça o join pelas CTEs; o self-join direto na bridge é lento demais.
 - Retorne colunas legíveis (titulo, nome_pessoa, nome_genero...), nunca só sk_*.
   Inclua as métricas usadas no ranking e uma contagem (qtd_filmes) em agregações.
-- Use ROUND(..., 2) em médias e razões. Use ORDER BY explícito e LIMIT em
-  rankings. Perguntas no plural ("Quais filmes/diretores/atores...") usam LIMIT 10,
-  salvo se a pergunta pedir outra quantidade.
+- Use ROUND(..., 2) em médias e razões. Use ORDER BY explícito em toda consulta.
+- Distribuição/agrupamento completo ("... por gênero", "... por ano", "quantidade
+  de filmes por status"), sem pedido de ranking/top: NÃO use LIMIT; retorne
+  todas as categorias, ordenadas pela métrica ou pela própria categoria.
+- Rankings explícitos no plural ("Quais filmes/diretores/atores têm mais/
+  maior/melhor...", "os mais avaliados") usam LIMIT 10, salvo se a pergunta
+  pedir outra quantidade.
 - Perguntas no singular sobre liderança ("Qual ator/produtora/gênero tem mais/
   maior...", "Qual dupla...") NÃO usam LIMIT 1: retorne o top 5 (LIMIT 5) para
   dar contexto; o 1º colocado é a resposta e os demais servem de comparação."""

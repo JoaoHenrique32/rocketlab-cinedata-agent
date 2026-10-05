@@ -20,6 +20,9 @@ class GoldenCase:
     sql: str
     # Coluna do gabarito cujos valores devem aparecer em alguma coluna da resposta.
     key_column: int = 0
+    # Distribuição completa ("por gênero", "por ano"): o agente deve trazer
+    # todas as linhas do gabarito, não só um prefixo.
+    full_result: bool = False
 
 
 GOLDEN_CASES: tuple[GoldenCase, ...] = (
@@ -38,6 +41,7 @@ LIMIT 10""",
     ),
     GoldenCase(
         id="fin_lucro_medio_genero",
+        full_result=True,
         category="Bilheteria e Finanças",
         question=(
             "Qual o lucro médio por gênero, considerando apenas filmes com "
@@ -101,6 +105,7 @@ LIMIT 10""",
     ),
     GoldenCase(
         id="pop_imdb_por_ano",
+        full_result=True,
         category="Popularidade e Engajamento",
         question="Qual a nota média IMDb por ano de lançamento?",
         sql="""
@@ -197,6 +202,7 @@ ORDER BY du.qtd_filmes DESC""",
     # 4. Gêneros e Produtoras
     GoldenCase(
         id="gen_qtd_por_genero",
+        full_result=True,
         category="Gêneros e Produtoras",
         question="Qual a quantidade de filmes por gênero?",
         sql="""

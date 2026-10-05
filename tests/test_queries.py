@@ -102,6 +102,11 @@ def test_agent_matches_golden(agent: CineDataAgent, db: ReadOnlyDatabase, case) 
     assert key_values_match(
         gold.rows, case.key_column, len(response.columns), response.rows
     ), f"SQL do agente:\n{response.sql}"
+    if case.full_result:
+        assert len(response.rows) == len(gold.rows), (
+            f"Distribuição incompleta ({len(response.rows)}/{len(gold.rows)}):\n"
+            f"{response.sql}"
+        )
 
 
 def test_key_values_match_ignores_order_and_column_position() -> None:
